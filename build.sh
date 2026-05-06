@@ -12,12 +12,47 @@ checkJava()
         export JAVA_HOME=/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home
     fi
 
-    javaVersion=$(java -version 2>&1 | sed -n ';s/.* version "\(.*\)\.\(.*\)\..*".*/\1\2/p;')
+    if [ -z "$JAVA_HOME" ]; then
+        for jdkHome in \
+            "/c/Program Files/Eclipse Adoptium/jdk-11"* \
+            "/c/Program Files/Java/jdk-11"* \
+            "/c/Program Files/Microsoft/jdk-11"* \
+            "/c/Program Files/Amazon Corretto/jdk11"* \
+            "/Library/Java/JavaVirtualMachines/"*"/Contents/Home"
+        do
+            if [ -d "$jdkHome/bin" ] && "$jdkHome/bin/java" -version 2>&1 | grep -q 'version "11\.'; then
+                export JAVA_HOME="$jdkHome"
+                break
+            fi
+        done
+    fi
 
-    if [[ "$javaVersion" -lt "110" ]]; then
-        echo "Java version must not lower than 11.0"
+    if [ -n "$JAVA_HOME" ]; then
+        export PATH="$JAVA_HOME/bin:$PATH"
+    fi
+
+    if ! command -v java >/dev/null 2>&1; then
+        echo "Java not found. Please install JDK 11 and set JAVA_HOME."
         exit 1
     fi
+
+    javaVersionOutput=$(java -version 2>&1)
+    javaMajorVersion=$(echo "$javaVersionOutput" | awk -F '"' '/version/ {print $2; exit}' | awk -F. '{ if ($1 == "1") print $2; else print $1 }')
+
+    if [[ -z "$javaMajorVersion" || "$javaMajorVersion" -lt "11" ]]; then
+        echo "Java version must not be lower than 11.0"
+        echo "$javaVersionOutput"
+        exit 1
+    fi
+
+    if [[ "$javaMajorVersion" -gt "13" ]]; then
+        echo "Gradle 6.1.1 is not compatible with Java $javaMajorVersion."
+        echo "Please use JDK 11 for this project, then rerun: ./build.sh $task"
+        echo "$javaVersionOutput"
+        exit 1
+    fi
+
+    echo "Using Java $javaMajorVersion from: $(command -v java)"
 }
 
 getVersion()
