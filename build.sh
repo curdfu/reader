@@ -1,6 +1,7 @@
 #!/bin/bash
 
 oldJAVAHome=$JAVA_HOME
+oldPATH=$PATH
 
 task=$1
 
@@ -12,7 +13,7 @@ checkJava()
         export JAVA_HOME=/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home
     fi
 
-    if [ -z "$JAVA_HOME" ]; then
+    if [ -z "$JAVA_HOME" ] || ! { [ -x "$JAVA_HOME/bin/java" ] && "$JAVA_HOME/bin/java" -version 2>&1 | grep -q 'version "11\.'; }; then
         for jdkHome in \
             "/c/Program Files/Eclipse Adoptium/jdk-11"* \
             "/c/Program Files/Java/jdk-11"* \
@@ -60,6 +61,22 @@ getVersion()
     version=$(grep -Eo "^version = .*" $1 | grep -Eo "['\"].*['\"]" | tr -d "'\"")
 }
 
+runWebPackageManager()
+{
+    if command -v yarn >/dev/null 2>&1; then
+        yarn "$@"
+    elif command -v npm >/dev/null 2>&1; then
+        if [[ $# -eq 0 ]]; then
+            npm install --legacy-peer-deps
+        else
+            npm run "$@"
+        fi
+    else
+        echo "Neither yarn nor npm was found. Please install Node.js with npm, or install yarn."
+        exit 1
+    fi
+}
+
 getVersion ./build.gradle.kts
 
 case $task in
@@ -98,6 +115,7 @@ case $task in
         JAVAFX_PLATFORM=mac ./gradlew packageReaderMac
     ;;
     serve)
+        checkJava
         # 服务端一键运行
         port=$2
         if [[ -z "$port" ]]; then
@@ -116,29 +134,37 @@ case $task in
         fi
     ;;
     cli)
+        checkJava
         # 服务端打包命令
         shift
-        export JAVA_HOME=$oldJAVAHome
         mv src/main/java/com/htmake/reader/ReaderUIApplication.kt src/main/java/com/htmake/reader/ReaderUIApplication.kt.back
         getVersion ./cli.gradle
         ./gradlew -b cli.gradle $@
         mv src/main/java/com/htmake/reader/ReaderUIApplication.kt.back src/main/java/com/htmake/reader/ReaderUIApplication.kt
     ;;
     yarn)
-        # yarn 快捷命令，默认 install
+        # 前端包管理器快捷命令，默认 install
         shift
         cd web
-        yarn $@
+        runWebPackageManager "$@"
     ;;
     web)
         # 开发web页面
         cd web
-        yarn serve
+        runWebPackageManager serve
     ;;
     sync)
         # 编译同步web资源
         cd web
-        yarn sync
+        if [ ! -d node_modules ]; then
+            runWebPackageManager
+        fi
+        runWebPackageManager build
+        if test $? -eq 0; then
+            cd ..
+            rm -rf src/main/resources/web
+            mv web/dist src/main/resources/web
+        fi
     ;;
     *)
         echo "
@@ -158,4 +184,9 @@ sync    编译同步web资源
     ;;
 esac
 
-export JAVA_HOME=$oldJAVAHome
+if [ -n "$oldJAVAHome" ]; then
+    export JAVA_HOME="$oldJAVAHome"
+else
+    unset JAVA_HOME
+fi
+export PATH="$oldPATH"
