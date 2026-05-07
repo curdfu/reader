@@ -450,6 +450,9 @@ import { customFonts } from "../plugins/config";
 
 export default {
   name: "ReadSettings",
+  created() {
+    this.syncConfigFromStore(this.$store.state.config);
+  },
   data() {
     return {
       themeColors: [
@@ -508,7 +511,8 @@ export default {
       customFontName: "",
       customFonts: customFonts,
 
-      config: this.$store.state.config,
+      config: { ...this.$store.state.config },
+      syncingConfigFromStore: false,
 
       configRules: {
         fontSize: { min: 8, delta: 1 },
@@ -527,14 +531,7 @@ export default {
     };
   },
   mounted() {
-    this.config = {
-      ...settings.config,
-      ...this.config,
-      selectionAction:
-        this.$store.state.config.selectionAction === "过滤弹窗"
-          ? "操作弹窗"
-          : "忽略"
-    };
+    this.syncConfigFromStore(this.$store.state.config);
   },
   computed: {
     moonIcon() {
@@ -552,14 +549,35 @@ export default {
     }
   },
   watch: {
+    "$store.state.config": {
+      deep: true,
+      handler(val) {
+        this.syncConfigFromStore(val);
+      }
+    },
     config: {
       deep: true,
       handler(val) {
+        if (this.syncingConfigFromStore) {
+          return;
+        }
         this.$store.commit("setConfig", { ...val });
       }
     }
   },
   methods: {
+    syncConfigFromStore(config) {
+      this.syncingConfigFromStore = true;
+      this.config = {
+        ...settings.config,
+        ...(config || {}),
+        selectionAction:
+          (config || {}).selectionAction === "过滤弹窗" ? "操作弹窗" : "忽略"
+      };
+      this.$nextTick(() => {
+        this.syncingConfigFromStore = false;
+      });
+    },
     setPageType(type) {
       if (type === this.config.pageType) {
         return;

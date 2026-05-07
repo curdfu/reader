@@ -203,6 +203,15 @@ export const defaultBookmark = {
 export const syncConfigFiled = Object.keys(defaultDayConfig).concat([
   "contentBGImg"
 ]);
+export const themeConfigFields = [
+  "theme",
+  "themeType",
+  "fontColor",
+  "bodyColor",
+  "contentColor",
+  "popupColor",
+  "contentBGImg"
+];
 export const customFonts = [
   "custom-system",
   "custom-ht",

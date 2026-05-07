@@ -1,6 +1,10 @@
 import Vue from "vue";
 import Vuex from "vuex";
-import settings, { customFonts, syncConfigFiled } from "./config";
+import settings, {
+  customFonts,
+  syncConfigFiled,
+  themeConfigFields
+} from "./config";
 import { setCache, getCache } from "../plugins/cache";
 import { Message } from "element-ui";
 
@@ -315,7 +319,11 @@ export default new Vuex.Store({
         Message.error("未配置" + (isNight ? "黑夜默认" : "白天默认") + "方案");
         return;
       }
-      config = { ...config, ...themeConfig };
+      themeConfigFields.forEach(field => {
+        if (typeof themeConfig[field] !== "undefined") {
+          config[field] = themeConfig[field];
+        }
+      });
       config.customConfig = themeConfig.name;
       // let config = { ...state.config };
       // if (config.theme !== "custom") {
