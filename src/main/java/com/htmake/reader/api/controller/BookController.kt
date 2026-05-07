@@ -58,6 +58,8 @@ import io.vertx.ext.web.client.WebClient
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.core.env.Environment
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ConcurrentHashMap
 import java.io.FileOutputStream
 import java.lang.Runtime
 import kotlin.collections.mutableMapOf
@@ -2698,14 +2700,15 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
         }
 
         var chapterList = getLocalChapterList(bookInfo, bookSource, false, userNameSpace)
-        var cachedChapterContentSet = mutableSetOf<Int>()
-        if (refresh <= 0) {
-            cachedChapterContentSet = getCachedChapterContentSet(bookInfo, userNameSpace)
+        val cachedChapterContentSet: MutableSet<Int> = if (refresh <= 0) {
+            ConcurrentHashMap.newKeySet<Int>().apply { addAll(getCachedChapterContentSet(bookInfo, userNameSpace)) }
+        } else {
+            ConcurrentHashMap.newKeySet<Int>()
         }
         val localCacheDir = getChapterCacheDir(bookInfo, userNameSpace)
         var isEnd = false
-        var successCount = 0;
-        var failedCount = 0;
+        val successCount = AtomicInteger(0)
+        val failedCount = AtomicInteger(0)
 
         context.request().connection().closeHandler{
             logger.info("客户端已断开链接，停止 cacheBookSSE")
@@ -2735,11 +2738,10 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
                         chapterInfo,
                         content
                     )
-                    successCount++;
+                    successCount.incrementAndGet()
                     cachedChapterContentSet.add(chapterIndex)
                 } catch(e: Exception) {
-                    isEnd = true
-                    failedCount++
+                    failedCount.incrementAndGet()
                 }
             }
             it
@@ -2750,8 +2752,8 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
                 // 返回本轮数据
                 val result = mapOf(
                     "cachedCount" to cachedChapterContentSet.size,
-                    "successCount" to successCount,
-                    "failedCount" to failedCount
+                    "successCount" to successCount.get(),
+                    "failedCount" to failedCount.get()
                 )
                 response.write("data: " + jsonEncode(result, false) + "\n\n")
                 logger.info("Loog: {} list.size: {} result: {}", loopCount, list.size, result)
@@ -2761,8 +2763,8 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
         response.write("event: end\n")
         response.end("data: " + jsonEncode(mapOf(
             "cachedCount" to cachedChapterContentSet.size,
-            "successCount" to successCount,
-            "failedCount" to failedCount
+            "successCount" to successCount.get(),
+            "failedCount" to failedCount.get()
         ), false) + "\n\n")
     }
 

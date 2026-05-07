@@ -2,6 +2,7 @@ package io.legado.app.help.http
 
 // import io.legado.app.help.http.cronet.CronetInterceptor
 import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.ConnectionPool
 import okhttp3.ConnectionSpec
 import okhttp3.Credentials
 import okhttp3.Interceptor
@@ -34,6 +35,7 @@ val okHttpClient: OkHttpClient by lazy {
         .connectTimeout(15, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .connectionPool(ConnectionPool(24, 5, TimeUnit.MINUTES))
         .sslSocketFactory(SSLHelper.unsafeSSLSocketFactory, SSLHelper.unsafeTrustManager)
         .retryOnConnectionFailure(true)
         .hostnameVerifier(SSLHelper.unsafeHostnameVerifier)
