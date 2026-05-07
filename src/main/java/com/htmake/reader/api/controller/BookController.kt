@@ -92,6 +92,25 @@ import okhttp3.Request
 
 private val logger = KotlinLogging.logger {}
 
+internal suspend fun cacheChapterWithAccounting(
+    chapterIndex: Int,
+    cachedChapterContentSet: MutableSet<Int>,
+    successCount: AtomicInteger,
+    failedCount: AtomicInteger,
+    cacheAction: suspend () -> Unit
+) {
+    if (cachedChapterContentSet.contains(chapterIndex)) {
+        return
+    }
+    try {
+        cacheAction()
+        successCount.incrementAndGet()
+        cachedChapterContentSet.add(chapterIndex)
+    } catch (e: Exception) {
+        failedCount.incrementAndGet()
+    }
+}
+
 class BookController(coroutineContext: CoroutineContext): BaseController(coroutineContext) {
 
     var bookInfoCache = ACache.get("bookInfoCache", 1000 * 1000 * 2L, 10000) // 缓存 2M 的书籍信息
@@ -2721,7 +2740,7 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             if (!cachedChapterContentSet.contains(it)) {
                 val chapterIndex = it
                 var chapterInfo = chapterList.get(it)
-                try {
+                cacheChapterWithAccounting(chapterIndex, cachedChapterContentSet, successCount, failedCount) {
                     var nextChapterUrl: String? = null
                     if (chapterIndex + 1 < chapterList.size) {
                         var nextChapterInfo = chapterList.get(chapterIndex + 1)
@@ -2738,10 +2757,6 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
                         chapterInfo,
                         content
                     )
-                    successCount.incrementAndGet()
-                    cachedChapterContentSet.add(chapterIndex)
-                } catch(e: Exception) {
-                    failedCount.incrementAndGet()
                 }
             }
             it

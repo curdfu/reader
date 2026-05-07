@@ -683,6 +683,16 @@ export default {
       );
     },
     loadBookSource(refresh) {
+      const validateCache =
+        refresh === true
+          ? true
+          : cacheResponse => {
+              const data = cacheResponse && cacheResponse.data;
+              if (Array.isArray(data)) {
+                return data.length > 0;
+              }
+              return !!data;
+            };
       return cacheFirstRequest(
         () =>
           Axios.get(this.api + "/getBookSources", {
@@ -691,7 +701,7 @@ export default {
             }
           }),
         "bookSourceList@" + this.currentUserName,
-        refresh
+        validateCache
       ).then(
         res => {
           if (res.data.isSuccess) {

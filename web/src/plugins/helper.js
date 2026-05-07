@@ -125,13 +125,7 @@ export const cacheFirstRequest = async function(
         return cacheResponse;
       });
     if (cacheResponse) {
-      // 缓存数据为空时视为无效缓存，强制请求后端
-      const data = cacheResponse.data;
-      const isEmpty = !data || (Array.isArray(data) && data.length === 0);
-      if (
-        !isEmpty &&
-        (!validateCache || (validateCache && validateCache(cacheResponse)))
-      ) {
+      if (!validateCache || (validateCache && validateCache(cacheResponse))) {
         return { data: cacheResponse };
       }
     }

@@ -2,6 +2,27 @@
 
 import { register } from "register-service-worker";
 
+function isLocalServeHost() {
+  const hostname = window.location.hostname;
+  return (
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  );
+}
+
+function unregisterLocalServiceWorkers() {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+  navigator.serviceWorker
+    .getRegistrations()
+    .then(registrations => {
+      registrations.forEach(registration => {
+        registration.unregister();
+      });
+    })
+    .catch(() => {});
+}
+
 function activateWorker(registration) {
   const worker =
     registration && (registration.waiting || registration.installing);
@@ -20,6 +41,10 @@ function clearHomeCache() {
 
 export function registerServiceWorker() {
   try {
+    if (window.getQueryString("nopwa") || isLocalServeHost()) {
+      unregisterLocalServiceWorkers();
+      return;
+    }
     if (
       process.env.NODE_ENV === "production" &&
       !window.getQueryString("nopwa")
