@@ -1333,6 +1333,33 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
         val sourceList = listOf(book.toSearchBook())
         saveBookSources(book, sourceList, userNameSpace)
 
+        // 新加入书架的网络书籍，获取章节列表并填充未读信息
+        if (existIndex < 0 && !book.isLocalBook() && !book.origin.isNullOrEmpty() && !book.tocUrl.isNullOrEmpty()) {
+            try {
+                var bookSource = getBookSourceStringBySourceURL(book.origin, userNameSpace)
+                if (bookSource != null) {
+                    val bookChapterList = getLocalChapterList(book, bookSource, false, userNameSpace, false)
+                    if (bookChapterList.size > 0) {
+                        book.latestChapterTitle = bookChapterList.last().title
+                    }
+                    book.totalChapterNum = bookChapterList.size
+                    fillUnreadChapterTitle(book, bookChapterList)
+                    // 更新书架中的书籍信息
+                    val bookshelfList = bookshelf!!.getList()
+                    for (i in 0 until bookshelfList.size) {
+                        val shelfBook = (bookshelfList[i] as? JsonObject)?.mapTo(Book::class.java)
+                        if (shelfBook != null && shelfBook.bookUrl == book.bookUrl) {
+                            bookshelfList[i] = JsonObject.mapFrom(book)
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // 获取章节失败不影响加入书架
+                e.printStackTrace()
+            }
+        }
+
         // logger.info("bookshelf: {}", bookshelf)
         saveUserStorage(userNameSpace, "bookshelf", bookshelf)
         return returnData.setData(book)
