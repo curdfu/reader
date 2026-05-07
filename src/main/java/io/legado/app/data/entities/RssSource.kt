@@ -17,6 +17,7 @@ data class RssSource(
     var sourceGroup: String? = null,
     var sourceComment: String? = null,
     var enabled: Boolean = true,
+    override var enabledCookieJar: Boolean? = false,    // 启用CookieJar
     override var concurrentRate: String? = null,    //并发率
     override  var header: String? = null,            // 请求头
     override var loginUrl: String? = null,          // 登录地址
@@ -62,6 +63,11 @@ data class RssSource(
         return equal(sourceUrl, source.sourceUrl)
                 && equal(sourceIcon, source.sourceIcon)
                 && enabled == source.enabled
+                && enabledCookieJar == source.enabledCookieJar
+                && equal(concurrentRate, source.concurrentRate)
+                && equal(header, source.header)
+                && equal(loginUrl, source.loginUrl)
+                && equal(loginCheckJs, source.loginCheckJs)
                 && equal(sourceGroup, source.sourceGroup)
                 && equal(ruleArticles, source.ruleArticles)
                 && equal(ruleNextPage, source.ruleNextPage)
@@ -115,6 +121,7 @@ data class RssSource(
                     sourceGroup = doc.readString("$.sourceGroup"),
                     sourceComment = doc.readString("$.sourceComment"),
                     enabled = doc.readBool("$.enabled") ?: true,
+                    enabledCookieJar = doc.readBool("$.enabledCookieJar") ?: false,
                     concurrentRate = doc.readString("$.concurrentRate"),
                     header = doc.readString("$.header"),
                     loginUrl = doc.readString("$.loginUrl"),

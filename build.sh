@@ -77,6 +77,22 @@ runWebPackageManager()
     fi
 }
 
+syncWebResources()
+{
+    cd web
+    if [ ! -d node_modules ]; then
+        runWebPackageManager
+    fi
+    runWebPackageManager build
+    if test $? -ne 0; then
+        cd ..
+        return 1
+    fi
+    cd ..
+    rm -rf src/main/resources/web
+    mv web/dist src/main/resources/web
+}
+
 getVersion ./build.gradle.kts
 
 case $task in
@@ -121,16 +137,27 @@ case $task in
         if [[ -z "$port" ]]; then
             port=8080
         fi
+        syncWebResources
+        if test $? -ne 0; then
+            exit 1
+        fi
+        restoreReaderUI()
+        {
+            if [ -f src/main/java/com/htmake/reader/ReaderUIApplication.kt.back ]; then
+                mv src/main/java/com/htmake/reader/ReaderUIApplication.kt.back src/main/java/com/htmake/reader/ReaderUIApplication.kt
+            fi
+        }
+        trap restoreReaderUI EXIT
         mv src/main/java/com/htmake/reader/ReaderUIApplication.kt src/main/java/com/htmake/reader/ReaderUIApplication.kt.back
         getVersion ./cli.gradle
         ./gradlew -b cli.gradle assemble --info
         if test $? -eq 0; then
             shift
             shift
-            mv src/main/java/com/htmake/reader/ReaderUIApplication.kt.back src/main/java/com/htmake/reader/ReaderUIApplication.kt
+            restoreReaderUI
             java -jar build/libs/reader-$version.jar --reader.server.port=$port $@
         else
-            mv src/main/java/com/htmake/reader/ReaderUIApplication.kt.back src/main/java/com/htmake/reader/ReaderUIApplication.kt
+            restoreReaderUI
         fi
     ;;
     cli)
@@ -155,16 +182,7 @@ case $task in
     ;;
     sync)
         # 编译同步web资源
-        cd web
-        if [ ! -d node_modules ]; then
-            runWebPackageManager
-        fi
-        runWebPackageManager build
-        if test $? -eq 0; then
-            cd ..
-            rm -rf src/main/resources/web
-            mv web/dist src/main/resources/web
-        fi
+        syncWebResources
     ;;
     *)
         echo "

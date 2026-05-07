@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.ConcurrentException
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CacheManager
 import io.legado.app.help.JsExtensions
 import io.legado.app.help.http.*
@@ -39,6 +40,7 @@ class AnalyzeUrl(
     headerMapF: Map<String, String>? = null,
 ) : JsExtensions {
     companion object {
+        const val WEB_VIEW_UNSUPPORTED_MSG = "当前书源需要 WebView，但 reader 服务版暂未启用 WebView 执行环境"
         val paramPattern: Pattern = Pattern.compile("\\s*,\\s*(?=\\{)")
         private val pagePattern = Pattern.compile("<(.*?)>")
         private val concurrentRecordMap = hashMapOf<String, ConcurrentRecord>()
@@ -346,33 +348,37 @@ class AnalyzeUrl(
             return StrResponse(url, StringUtils.byteToHexString(getByteArrayAwait()))
         }
         val concurrentRecord = fetchStart()
-        setCookie(source?.getKey())
-        val strResponse: StrResponse
-        if (this.useWebView && useWebView) {
-            throw Exception("不支持webview")
-        } else {
-            strResponse = getProxyClient(proxy, debugLog).newCallStrResponse(retry) {
-                addHeaders(headerMap)
-                when (method) {
-                    RequestMethod.POST -> {
-                        url(urlNoQuery)
-                        val contentType = headerMap["Content-Type"]
-                        val body = body
-                        if (fieldMap.isNotEmpty() || body.isNullOrBlank()) {
-                            postForm(fieldMap, true)
-                        } else if (!contentType.isNullOrBlank()) {
-                            val requestBody = body.toRequestBody(contentType.toMediaType())
-                            post(requestBody)
-                        } else {
-                            postJson(body)
+        try {
+            setCookie(source?.getKey())
+            val strResponse: StrResponse
+            if (this.useWebView && useWebView) {
+                throw NoStackTraceException(WEB_VIEW_UNSUPPORTED_MSG)
+            } else {
+                strResponse = getProxyClient(proxy, debugLog).newCallStrResponse(retry) {
+                    addHeaders(headerMap)
+                    when (method) {
+                        RequestMethod.POST -> {
+                            url(urlNoQuery)
+                            val contentType = headerMap["Content-Type"]
+                            val body = body
+                            if (fieldMap.isNotEmpty() || body.isNullOrBlank()) {
+                                postForm(fieldMap, true)
+                            } else if (!contentType.isNullOrBlank()) {
+                                val requestBody = body.toRequestBody(contentType.toMediaType())
+                                post(requestBody)
+                            } else {
+                                postJson(body)
+                            }
                         }
+                        else -> get(urlNoQuery, fieldMap, true)
                     }
-                    else -> get(urlNoQuery, fieldMap, true)
                 }
             }
+            saveResponseCookie(strResponse.raw)
+            return strResponse
+        } finally {
+            fetchEnd(concurrentRecord)
         }
-        fetchEnd(concurrentRecord)
-        return strResponse
     }
 
     @JvmOverloads
@@ -414,6 +420,7 @@ class AnalyzeUrl(
             }
         }
         fetchEnd(concurrentRecord)
+        saveResponseCookie(response)
         return response
     }
 
@@ -439,7 +446,7 @@ class AnalyzeUrl(
             return byteArray
         } else {
             setCookie(source?.getKey())
-            val byteArray = getProxyClient(proxy).newCallResponseBody(retry) {
+            val response = getProxyClient(proxy).newCallResponse(retry) {
                 addHeaders(headerMap)
                 when (method) {
                     RequestMethod.POST -> {
@@ -457,7 +464,9 @@ class AnalyzeUrl(
                     }
                     else -> get(urlNoQuery, fieldMap, true)
                 }
-            }.bytes()
+            }
+            saveResponseCookie(response)
+            val byteArray = response.body?.bytes() ?: throw Exception(response.message)
             fetchEnd(concurrentRecord)
             return byteArray
         }
@@ -494,6 +503,8 @@ class AnalyzeUrl(
      *@param tag 书源url 缺省为传入的url
      */
     private fun setCookie(tag: String?) {
+        val source = source ?: return
+        if (source.enabledCookieJar != true) return
         val cookie = CookieStore.getCookie(tag ?: url)
         if (cookie.isNotEmpty()) {
             val cookieMap = CookieStore.cookieToMap(cookie)
@@ -501,8 +512,23 @@ class AnalyzeUrl(
             cookieMap.putAll(customCookieMap)
             val newCookie = CookieStore.mapToCookie(cookieMap)
             newCookie?.let {
-                headerMap.put("Cookie", it)
+                headerMap["Cookie"] = it
             }
+        }
+    }
+
+    private fun saveResponseCookie(response: Response?) {
+        val source = source ?: return
+        if (source.enabledCookieJar != true) return
+        response ?: return
+        try {
+            response.headers("Set-Cookie").forEach { setCookie ->
+                val cookiePair = setCookie.substringBefore(";").trim()
+                if (cookiePair.isNotBlank() && cookiePair.contains("=")) {
+                    CookieStore.replaceCookie(source.getKey(), cookiePair)
+                }
+            }
+        } catch (_: Exception) {
         }
     }
 
@@ -523,48 +549,57 @@ class AnalyzeUrl(
         private var charset: String? = null,
         private var headers: Any? = null,
         private var body: Any? = null,
-        private var retry: Int? = null,
+        private var retry: Any? = null,
         private var type: String? = null,
         private var webView: Any? = null,
         private var webJs: String? = null,
         private var js: String? = null,
     ) {
         fun setMethod(value: String?) {
-            method = if (value.isNullOrBlank()) null else value
+            method = value.trimToNull()
         }
 
         fun getMethod(): String? {
-            return method
+            return method.trimToNull()
         }
 
         fun setCharset(value: String?) {
-            charset = if (value.isNullOrBlank()) null else value
+            charset = value.trimToNull()
         }
 
         fun getCharset(): String? {
-            return charset
+            return charset.trimToNull()
         }
 
         fun setRetry(value: String?) {
-            retry = if (value.isNullOrEmpty()) null else value.toIntOrNull()
+            retry = value.trimToNull()
         }
 
         fun getRetry(): Int {
-            return retry ?: 0
+            return when (val value = retry) {
+                is Number -> value.toInt()
+                is String -> value.trim().toIntOrNull() ?: 0
+                else -> 0
+            }
         }
 
         fun setType(value: String?) {
-            type = if (value.isNullOrBlank()) null else value
+            type = value.trimToNull()
         }
 
         fun getType(): String? {
-            return type
+            return type.trimToNull()
         }
 
         fun useWebView(): Boolean {
-            return when (webView) {
-                null, "", false, "false" -> false
-                else -> true
+            return when (val value = webView) {
+                is Boolean -> value
+                is Number -> value.toInt() == 1
+                is String -> when (value.trim().lowercase()) {
+                    "true", "1" -> true
+                    else -> false
+                }
+                else -> false
             }
         }
 
@@ -576,7 +611,7 @@ class AnalyzeUrl(
             headers = if (value.isNullOrBlank()) {
                 null
             } else {
-                GSON.fromJsonObject<Map<String, Any>>(value).getOrNull()
+                GSON.fromJsonObject<Map<String, Any>>(value.trim()).getOrNull()
             }
         }
 
@@ -589,10 +624,13 @@ class AnalyzeUrl(
         }
 
         fun setBody(value: String?) {
+            val bodyValue = value.trimToNull()
             body = when {
-                value.isNullOrBlank() -> null
-                value.isJsonObject() -> GSON.fromJsonObject<Map<String, Any>>(value)
-                value.isJsonArray() -> GSON.fromJsonArray<Map<String, Any>>(value)
+                bodyValue == null -> null
+                bodyValue.isJsonObject() -> GSON.fromJsonObject<Map<String, Any>>(bodyValue)
+                    .getOrNull() ?: bodyValue
+                bodyValue.isJsonArray() -> GSON.fromJsonArray<Any>(bodyValue)
+                    .getOrNull() ?: bodyValue
                 else -> value
             }
         }
@@ -604,19 +642,23 @@ class AnalyzeUrl(
         }
 
         fun setWebJs(value: String?) {
-            webJs = if (value.isNullOrBlank()) null else value
+            webJs = value.trimToNull()
         }
 
         fun getWebJs(): String? {
-            return webJs
+            return webJs.trimToNull()
         }
 
         fun setJs(value: String?) {
-            js = if (value.isNullOrBlank()) null else value
+            js = value.trimToNull()
         }
 
         fun getJs(): String? {
-            return js
+            return js.trimToNull()
+        }
+
+        private fun String?.trimToNull(): String? {
+            return this?.trim()?.takeIf { it.isNotEmpty() }
         }
     }
 

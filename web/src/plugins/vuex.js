@@ -85,6 +85,7 @@ export default new Vuex.Store({
           durChapterPos: v.durChapterPos,
           durChapterTime: v.durChapterTime,
           durChapterTitle: v.durChapterTitle,
+          unreadChapterTitle: v.unreadChapterTitle,
           kind: v.kind,
           intro: v.intro,
           lastCheckTime: v.lastCheckTime,
@@ -123,6 +124,9 @@ export default new Vuex.Store({
               book.durChapterTime || state.shelfBooks[index].durChapterTime,
             durChapterTitle:
               book.durChapterTitle || state.shelfBooks[index].durChapterTitle,
+            unreadChapterTitle:
+              book.unreadChapterTitle ||
+              state.shelfBooks[index].unreadChapterTitle,
             kind: book.kind || state.shelfBooks[index].kind,
             intro: book.intro || state.shelfBooks[index].intro,
             lastCheckTime:
@@ -357,16 +361,25 @@ export default new Vuex.Store({
         v => v.bookSourceUrl === bookSourceUrl
       );
       if (index >= 0) {
+        state.failureBookSource[index] = {
+          ...state.failureBookSource[index],
+          errorMsg
+        };
+        state.failureBookSource = [].concat(state.failureBookSource);
         return;
       }
       const bookSource = state.bookSourceList.find(
         v => v.bookSourceUrl === bookSourceUrl
       );
-      if (bookSource) {
-        state.failureBookSource = state.failureBookSource.concat([
-          { ...bookSource, errorMsg }
-        ]);
-      }
+      state.failureBookSource = state.failureBookSource.concat([
+        {
+          ...(bookSource || {
+            bookSourceName: bookSourceUrl,
+            bookSourceUrl
+          }),
+          errorMsg
+        }
+      ]);
     },
     removeFailureBookSource(state, bookSourceList) {
       for (let i = 0; i < bookSourceList.length; i++) {

@@ -7,12 +7,16 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.RssArticle
+import io.legado.app.help.http.newCallStrResponse
+import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.webBook.WebBook
 import io.vertx.ext.web.Route
 import io.vertx.ext.web.Router
 import io.vertx.ext.web.RoutingContext
 import io.vertx.ext.web.handler.StaticHandler;
 import mu.KotlinLogging
+import com.htmake.reader.api.response.BookSourceImportReport
+import com.htmake.reader.api.response.SkippedBookSource
 import com.htmake.reader.config.AppConfig
 import com.htmake.reader.config.BookConfig
 import io.legado.app.constant.DeepinkBookSource
@@ -20,6 +24,7 @@ import com.htmake.reader.utils.error
 import com.htmake.reader.utils.success
 import com.htmake.reader.utils.getStorage
 import com.htmake.reader.utils.saveStorage
+import com.htmake.reader.utils.BookSourceTypeFilter
 import com.htmake.reader.utils.asJsonArray
 import com.htmake.reader.utils.asJsonObject
 import com.htmake.reader.utils.toDataClass
@@ -99,6 +104,9 @@ class BookSourceController(coroutineContext: CoroutineContext): BaseController(c
         if (bookSource == null) {
             return returnData.setErrorMsg("参数错误")
         }
+        if (!BookSourceTypeFilter.isSupportedTextType(bookSource.bookSourceType)) {
+            return returnData.setErrorMsg("unsupported book source type: ${BookSourceTypeFilter.bucket(bookSource.bookSourceType)}")
+        }
         // val bookSource = context.bodyAsJson.mapTo(BookSource::class.java)
 
         var userNameSpace = getUserNameSpace(context)
@@ -142,9 +150,28 @@ class BookSourceController(coroutineContext: CoroutineContext): BaseController(c
         if (bookSourceList == null) {
             bookSourceList = JsonArray()
         }
+        var imported = 0
+        val skippedSources = arrayListOf<SkippedBookSource>()
+        val skippedByType = mutableMapOf(
+            "audio" to 0,
+            "image" to 0,
+            "file" to 0,
+            "unknown" to 0
+        )
         for (k in 0 until bookSourceJsonArray.size()) {
             val bookSource = BookSource.fromJson(bookSourceJsonArray.getJsonObject(k).toString()).getOrNull()
             if (bookSource == null) {
+                continue
+            }
+            if (!BookSourceTypeFilter.isSupportedTextType(bookSource.bookSourceType)) {
+                val bucket = BookSourceTypeFilter.bucket(bookSource.bookSourceType)
+                skippedByType[bucket] = (skippedByType[bucket] ?: 0) + 1
+                skippedSources.add(SkippedBookSource(
+                    name = bookSource.bookSourceName,
+                    url = bookSource.bookSourceUrl,
+                    type = bookSource.bookSourceType,
+                    reason = BookSourceTypeFilter.reason(bookSource.bookSourceType)
+                ))
                 continue
             }
             // var bookSource = bookSourceJsonArray.getJsonObject(k).mapTo(BookSource::class.java)
@@ -164,11 +191,18 @@ class BookSourceController(coroutineContext: CoroutineContext): BaseController(c
             } else {
                 bookSourceList.add(JsonObject.mapFrom(bookSource))
             }
+            imported++
         }
 
         // logger.info("bookSourceList: {}", bookSourceList)
         saveUserStorage(userNameSpace, "bookSource", bookSourceList!!)
-        return returnData.setData("")
+        val report = BookSourceImportReport(
+            imported = imported,
+            skipped = skippedSources.size,
+            skippedByType = skippedByType,
+            skippedSources = skippedSources
+        )
+        return returnData.setData(mapOf("report" to report))
     }
 
     suspend fun getBookSource(context: RoutingContext): ReturnData {
@@ -363,15 +397,23 @@ class BookSourceController(coroutineContext: CoroutineContext): BaseController(c
             return
         }
 
-        launch(Dispatchers.IO) {
-            webClient.getAbs(url).timeout(3000).send {
-                var body = it.result()?.bodyAsString()
-                if (body != null) {
-                    context.success(returnData.setData(arrayListOf(body)))
-                } else {
-                    context.success(returnData.setErrorMsg("远程书源链接错误"))
+        try {
+            val response = withContext(Dispatchers.IO) {
+                okHttpClient.newCallStrResponse(retry = 1) {
+                    url(url)
+                    header("User-Agent", "Mozilla/5.0 reader")
+                    header("Accept", "application/json,text/plain,*/*")
                 }
             }
+            val body = response.body
+            if (response.isSuccessful() && !body.isNullOrBlank()) {
+                context.success(returnData.setData(arrayListOf(body)))
+            } else {
+                context.success(returnData.setErrorMsg("远程书源链接错误: HTTP ${response.code()} ${response.message()}"))
+            }
+        } catch (e: Exception) {
+            logger.warn(e) { "read remote source failed: $url" }
+            context.success(returnData.setErrorMsg("读取远程书源失败: ${e.message ?: e.javaClass.simpleName}"))
         }
     }
 

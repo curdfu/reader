@@ -560,6 +560,7 @@
       </div>
       <div
         class="books-wrapper"
+        :class="{ 'search-books-wrapper': isSearchResult }"
         ref="bookList"
         @touchstart="handleTouchStart"
         @touchmove="handleTouchMove"
@@ -569,12 +570,20 @@
         <div class="wrapper">
           <div
             class="book"
+            :class="{ 'search-book': isSearchResult }"
             :style="showNavigation ? { minWidth: '360px !important' } : {}"
             v-for="book in bookList"
-            :key="book.bookUrl"
+            :key="
+              isSearchResult && book.searchGroupKey
+                ? book.searchGroupKey
+                : book.bookUrl
+            "
             @click="toDetail(book)"
           >
-            <div class="cover-img" @click.stop="showBookInfoDialog(book)">
+            <div
+              class="cover-img"
+              @click.stop="showBookInfoDialog(getSelectedSearchBook(book))"
+            >
               <!-- <img class="cover" v-lazy="getCover(book.coverUrl)" alt="" /> -->
               <el-image
                 class="cover"
@@ -586,7 +595,7 @@
               </el-image>
             </div>
             <div class="info" @click="toDetail(book)">
-              <div class="book-operation">
+              <div class="book-operation" v-if="!isSearchResult">
                 <i
                   class="el-icon-close"
                   v-if="!isSearchResult && showBookEditButton"
@@ -597,19 +606,13 @@
                   v-if="!isSearchResult && showBookEditButton"
                   @click.stop="editBook(book)"
                 ></i>
-                <i
-                  class="el-icon-edit"
-                  v-if="isSearchResult"
-                  @click.stop="editBook(book, true)"
-                ></i>
                 <el-badge
                   class="unread-num-badge"
-                  :max="99"
-                  :value="book.totalChapterNum - 1 - book.durChapterIndex"
+                  :value="getUnreadChapterCount(book)"
                   v-if="
                     !isSearchResult &&
                       !showBookEditButton &&
-                      book.totalChapterNum - 1 - book.durChapterIndex > 0
+                      getUnreadChapterCount(book) > 0
                   "
                 />
               </div>
@@ -635,20 +638,57 @@
               >
                 已读：{{ book.durChapterTitle }}
               </div>
+              <div
+                class="dur-chapter unread-chapter"
+                v-if="!isSearchResult && getUnreadChapterTitle(book)"
+              >
+                未读：{{ getUnreadChapterTitle(book) }}
+              </div>
               <div class="last-chapter" v-if="book.latestChapterTitle">
                 {{
                   book.lastCheckTime ? dateFormat(book.lastCheckTime) : "最新"
                 }}：{{ book.latestChapterTitle }}
               </div>
-              <div v-if="isSearchResult">
-                <el-tag
-                  type="success"
-                  :effect="isNight ? 'dark' : 'light'"
-                  class="setting-connect"
-                  @click.stop="addBookToShelf(book)"
-                >
-                  加入书架
-                </el-tag>
+              <div class="search-footer" v-if="isSearchResult" @click.stop>
+                <div class="search-source-summary" v-if="book.sourceCount">
+                  共 {{ book.sourceCount }} 个书源
+                </div>
+                <div class="search-actions">
+                  <div
+                    class="search-source-switch"
+                    v-if="book.sourceList && book.sourceList.length > 1"
+                  >
+                    <el-select
+                      size="mini"
+                      :value="book.bookUrl"
+                      @change="onSearchSourceChange(book, $event)"
+                    >
+                      <el-option
+                        v-for="sourceBook in book.sourceList"
+                        :key="sourceBook.bookUrl"
+                        :label="getSearchSourceLabel(sourceBook)"
+                        :value="sourceBook.bookUrl"
+                      ></el-option>
+                    </el-select>
+                  </div>
+                  <div class="search-action-buttons">
+                    <button
+                      class="search-icon-btn"
+                      title="编辑"
+                      @click.stop="editBook(getSelectedSearchBook(book), true)"
+                    >
+                      <i class="el-icon-edit"></i>
+                    </button>
+                    <el-tag
+                      type="success"
+                      :effect="isNight ? 'dark' : 'light'"
+                      class="setting-connect"
+                      @click.stop="addBookToShelf(book)"
+                    >
+                      加入书架
+                    </el-tag>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -674,6 +714,7 @@
             :label="index"
             :key="index"
             class="source-checkbox"
+            :disabled="!isImportSourceSelectable(source)"
             >{{ isImportRssSource ? source.sourceName : source.bookSourceName }}
             {{ isImportRssSource ? source.sourceUrl : source.bookSourceUrl }}
             {{ getSourceTag(source) }}</el-checkbox
@@ -790,7 +831,13 @@
             dialogContentHeight - 42 - 42 - (isShowFailureBookSource ? 32 : 0)
           "
           @selection-change="manageSourceSelection = $event"
-          :key="isShowFailureBookSource"
+          :key="
+            [
+              isShowFailureBookSource ? 'failure' : 'source',
+              bookSourceTableKey,
+              bookSourceShowLength
+            ].join('-')
+          "
         >
           <el-table-column
             type="selection"
@@ -1031,6 +1078,7 @@ export default {
       isSearchResult: false,
       isExploreResult: false,
       searchResult: [],
+      searchGroupSelection: {},
       searchPage: 1,
       refreshLoading: false,
       searchLastIndex: -1,
@@ -1052,6 +1100,8 @@ export default {
       isShowFailureBookSource: false,
       checkBookSourceTip: "",
       isCheckingBookSource: false,
+      bookSourceTableKey: 0,
+      checkBookSourceStartFailureCount: 0,
 
       showNavigation: false,
 
@@ -1301,6 +1351,7 @@ export default {
       if (page === 1) {
         // 重新搜索
         this.searchLastIndex = -1;
+        this.searchGroupSelection = {};
       }
       if (this.searchConfig.searchType === "multi" && window.EventSource) {
         this.searchBookByEventStream(page);
@@ -1314,6 +1365,7 @@ export default {
       this.loadingMore = true;
       if (page === 1) {
         this.searchResult = [];
+        this.searchGroupSelection = {};
       }
       Axios.post(
         this.api +
@@ -1399,6 +1451,7 @@ export default {
       this.loadingMore = true;
       if (page === 1) {
         this.searchResult = [];
+        this.searchGroupSelection = {};
       }
       const url = buildURL(this.api + "/searchBookMultiSSE", params);
 
@@ -1462,6 +1515,7 @@ export default {
       });
     },
     toDetail(book) {
+      book = this.getSelectedSearchBook(book);
       if (!book.bookUrl) {
         return;
       }
@@ -1487,6 +1541,7 @@ export default {
       });
     },
     async addBookToShelf(book) {
+      book = this.getSelectedSearchBook(book);
       const customImportBookInfo = await this.customImportBookInfo({
         title: "设置分组",
         cancelButtonText: "暂不加入"
@@ -1495,6 +1550,70 @@ export default {
         return;
       }
       this.saveBook({ ...book, ...customImportBookInfo });
+    },
+    getUnreadChapterCount(book) {
+      if (!book || isNaN(Number(book.totalChapterNum))) {
+        return 0;
+      }
+      return Math.max(
+        Number(book.totalChapterNum || 0) -
+          1 -
+          Number(book.durChapterIndex || 0),
+        0
+      );
+    },
+    getUnreadChapterTitle(book) {
+      if (this.getUnreadChapterCount(book) <= 0) {
+        return "";
+      }
+      return (
+        book.unreadChapterTitle ||
+        "第" + (Number(book.durChapterIndex || 0) + 2) + "章"
+      );
+    },
+    normalizeSearchText(text) {
+      return (text || "")
+        .toString()
+        .trim()
+        .replace(/\s+/g, " ")
+        .toLowerCase();
+    },
+    getSearchGroupKey(book) {
+      const name = this.normalizeSearchText(book && book.name);
+      const author = this.normalizeSearchText(book && book.author);
+      return name + "::" + author;
+    },
+    getSelectedSearchBook(book) {
+      if (!this.isSearchResult || !book || !book.sourceList) {
+        return book || {};
+      }
+      return (
+        book.sourceList.find(item => item.bookUrl === book.bookUrl) ||
+        book.sourceList[0] ||
+        book
+      );
+    },
+    getSearchSourceLabel(book) {
+      if (!book) {
+        return "未知书源";
+      }
+      if (book.originName) {
+        return book.originName;
+      }
+      if (book.origin) {
+        try {
+          return new URL(book.origin).host || book.origin;
+        } catch (error) {
+          return book.origin;
+        }
+      }
+      return "未知书源";
+    },
+    onSearchSourceChange(book, bookUrl) {
+      if (!book || !book.searchGroupKey) {
+        return;
+      }
+      this.$set(this.searchGroupSelection, book.searchGroupKey, bookUrl);
     },
     saveBook(book, isImport, isEdit) {
       if (!book || !book.bookUrl || !book.origin) {
@@ -1696,20 +1815,7 @@ export default {
         try {
           const sourceList = JSON.parse(data);
           if (Array.isArray(sourceList) && sourceList.length) {
-            this.importSourceList = sourceList.map(v => {
-              if (v.headerMap) {
-                if (!v.header) {
-                  v.header =
-                    typeof v.headerMap === "string"
-                      ? v.headerMap
-                      : JSON.stringify(v.headerMap);
-                }
-                delete v.headerMap;
-              }
-              return v;
-            });
-            this.showImportSourceDialog = true;
-            this.isImportRssSource = !!isRssSource;
+            this.openImportSourceDialog(sourceList, isRssSource);
           } else {
             this.$message.error(sourceTypeName + "文件错误");
           }
@@ -1740,20 +1846,7 @@ export default {
                 }
               });
               if (sourceList.length) {
-                this.importSourceList = sourceList.map(v => {
-                  if (v.headerMap) {
-                    if (!v.header) {
-                      v.header =
-                        typeof v.headerMap === "string"
-                          ? v.headerMap
-                          : JSON.stringify(v.headerMap);
-                    }
-                    delete v.headerMap;
-                  }
-                  return v;
-                });
-                this.showImportSourceDialog = true;
-                this.isImportRssSource = !!isRssSource;
+                this.openImportSourceDialog(sourceList, isRssSource);
               } else {
                 this.$message.error(sourceTypeName + "文件错误");
               }
@@ -1791,15 +1884,19 @@ export default {
       if (!res || !res.value) {
         return;
       }
+      const remoteSourceUrl = res.value;
       Axios.post(this.api + "/readRemoteSourceFile", {
-        url: res.value
+        url: remoteSourceUrl
       }).then(
-        res => {
-          if (res.data.isSuccess) {
-            setCache(this.currentUserName + "@lastRemoteSourceUrl", res.value);
+        response => {
+          if (response.data.isSuccess) {
+            setCache(
+              this.currentUserName + "@lastRemoteSourceUrl",
+              remoteSourceUrl
+            );
             //
             let sourceList = [];
-            res.data.data.forEach(v => {
+            response.data.data.forEach(v => {
               try {
                 const data = JSON.parse(v);
                 if (Array.isArray(data)) {
@@ -1810,12 +1907,18 @@ export default {
               }
             });
             if (sourceList.length) {
-              this.importSourceList = sourceList;
-              this.showImportSourceDialog = true;
-              this.isImportRssSource = false;
+              this.openImportSourceDialog(sourceList, false);
+              this.$message.success(
+                "远程书源读取成功，共 " + sourceList.length + " 个"
+              );
             } else {
               this.$message.error("远程书源文件错误");
             }
+          } else {
+            this.$message.error(
+              "读取远程书源失败 " +
+                (response.data.errorMsg || "远程书源链接错误")
+            );
           }
         },
         error => {
@@ -1825,43 +1928,95 @@ export default {
         }
       );
     },
+    openImportSourceDialog(sourceList, isRssSource) {
+      this.importSourceList = sourceList.map(v => {
+        const source = Object.assign({}, v);
+        if (source.headerMap) {
+          if (!source.header) {
+            source.header =
+              typeof source.headerMap === "string"
+                ? source.headerMap
+                : JSON.stringify(source.headerMap);
+          }
+          delete source.headerMap;
+        }
+        return source;
+      });
+      this.checkedSourceIndex = [];
+      this.checkAll = false;
+      this.isIndeterminate = false;
+      this.isImportRssSource = !!isRssSource;
+      this.showImportSourceDialog = true;
+    },
+    getImportBookSourceType(source) {
+      if (
+        !source ||
+        source.bookSourceType === undefined ||
+        source.bookSourceType === null ||
+        source.bookSourceType === ""
+      ) {
+        return 0;
+      }
+      const type = Number(source.bookSourceType);
+      return Number.isNaN(type) ? -1 : type;
+    },
+    getUnsupportedImportSourceReason(source) {
+      switch (this.getImportBookSourceType(source)) {
+        case 1:
+          return "音频源暂不支持";
+        case 2:
+          return "图片源暂不支持";
+        case 3:
+          return "文件源暂不支持";
+        default:
+          return "未知类型暂不支持";
+      }
+    },
+    isImportSourceSelectable(source) {
+      return (
+        this.isImportRssSource || this.getImportBookSourceType(source) === 0
+      );
+    },
+    getSelectableImportSourceIndexes() {
+      const indexes = [];
+      this.importSourceList.forEach((source, index) => {
+        if (this.isImportSourceSelectable(source)) {
+          indexes.push(index);
+        }
+      });
+      return indexes;
+    },
     handleCheckAllChange(val) {
-      let hasFilterd = false;
-      this.checkedSourceIndex = val
-        ? this.importSourceList
-            .map((v, i) => {
-              // 不勾选使用了 js，webview的书源
-              const source = JSON.stringify(v);
-              if (
-                source.indexOf("@js:") !== -1 ||
-                source.indexOf("webView:") !== -1
-              ) {
-                hasFilterd = true;
-                return false;
-              }
-              return i;
-            })
-            .filter(v => v)
-        : [];
-      if (val && hasFilterd) {
-        this.$message.info("部分使用了Javascript和Webview的书源未勾选");
+      const selectableIndexes = this.getSelectableImportSourceIndexes();
+      const skippedCount =
+        this.importSourceList.length - selectableIndexes.length;
+      this.checkedSourceIndex = val ? selectableIndexes : [];
+      this.checkAll =
+        val &&
+        selectableIndexes.length > 0 &&
+        this.checkedSourceIndex.length === selectableIndexes.length;
+      if (val && skippedCount) {
+        this.$message.info("音频、图片和文件源暂不支持，已自动跳过");
       }
       this.isIndeterminate = false;
     },
     handleCheckedSourcesChange(value) {
       let checkedCount = value.length;
-      this.checkAll = checkedCount === this.importSourceList.length;
-      this.isIndeterminate =
-        checkedCount > 0 && checkedCount < this.importSourceList.length;
+      const selectableCount = this.getSelectableImportSourceIndexes().length;
+      this.checkAll = selectableCount > 0 && checkedCount === selectableCount;
+      this.isIndeterminate = checkedCount > 0 && checkedCount < selectableCount;
     },
     getSourceTag(source) {
       const sourceStr = JSON.stringify(source);
       const tags = [];
+      if (!this.isImportSourceSelectable(source)) {
+        tags.push("@" + this.getUnsupportedImportSourceReason(source));
+      }
       if (sourceStr.indexOf("@js:") !== -1) {
         tags.push("@Javascript");
       }
 
-      if (sourceStr.indexOf("webView:") !== -1) {
+      if (source.webView || sourceStr.indexOf("webView") !== -1) {
         tags.push("@WebView");
       }
 
@@ -1876,9 +2031,13 @@ export default {
         this.$message.error("请选择需要导入的源");
         return;
       }
-      const sourceList = this.checkedSourceIndex.map(
-        v => this.importSourceList[v]
-      );
+      const sourceList = this.checkedSourceIndex
+        .map(v => this.importSourceList[v])
+        .filter(v => v && this.isImportSourceSelectable(v));
+      if (!sourceList.length) {
+        this.$message.error("请选择需要导入的源");
+        return;
+      }
       Axios.post(
         this.api +
           (this.isImportRssSource ? "/saveRssSources" : "/saveBookSources"),
@@ -1886,10 +2045,27 @@ export default {
       ).then(
         res => {
           if (res.data.isSuccess) {
-            //
-            this.$message.success(
-              this.isImportRssSource ? "导入RSS源成功" : "导入书源成功"
-            );
+            const report = res.data.data && res.data.data.report;
+            if (!this.isImportRssSource && report) {
+              const message =
+                "导入书源完成，导入 " +
+                report.imported +
+                " 个，跳过 " +
+                report.skipped +
+                " 个";
+              if (report.imported > 0) {
+                this.$message.success(message);
+              } else {
+                this.$message.warning(message);
+              }
+              this.$alert(message, "导入结果", {
+                confirmButtonText: "知道了"
+              });
+            } else {
+              this.$message.success(
+                this.isImportRssSource ? "导入RSS源成功" : "导入书源成功"
+              );
+            }
             if (this.isImportRssSource) {
               this.loadRssSources(true);
             } else {
@@ -1929,9 +2105,9 @@ export default {
     getInvalidBookSources() {
       if (!this.$store.state.connected) {
         this.$message.error("后端未连接");
-        return;
+        return Promise.resolve(false);
       }
-      Axios.post(this.api + "/getInvalidBookSources").then(
+      return Axios.post(this.api + "/getInvalidBookSources").then(
         res => {
           if (res.data.isSuccess) {
             //
@@ -1941,10 +2117,13 @@ export default {
                 errorMsg: v.error
               });
             });
+            this.bookSourceTableKey++;
           }
+          return res;
         },
         () => {
           //
+          return false;
         }
       );
     },
@@ -1955,6 +2134,9 @@ export default {
       }
       this.isCheckingBookSource = true;
       this.$store.commit("setFailureIncludeTimeout", true);
+      this.checkBookSourceStartFailureCount = this.$store.state.failureBookSource.length;
+      this.showSourceGroup = "";
+      this.bookSourcePagination.page = 1;
       const limitFunc = LimitResquest(
         this.checkBookSourceConfig.concurrent,
         handler => {
@@ -1963,6 +2145,18 @@ export default {
           if (handler.isEnd()) {
             this.isCheckingBookSource = false;
             this.$store.commit("setFailureIncludeTimeout", false);
+            this.getInvalidBookSources().then(() => {
+              this.bookSourceTableKey++;
+              const count =
+                this.$store.state.failureBookSource.length -
+                this.checkBookSourceStartFailureCount;
+              this.$message.info(
+                "检测完成，失效书源 " +
+                  this.$store.state.failureBookSource.length +
+                  " 个" +
+                  (count > 0 ? "，本次新增 " + count + " 个" : "")
+              );
+            });
           }
         }
       );
@@ -1977,6 +2171,25 @@ export default {
             {
               timeout: this.checkBookSourceConfig.timeout,
               silent: true
+            }
+          ).then(
+            res => {
+              if (res && res.data && !res.data.isSuccess) {
+                this.$store.commit("addFailureBookSource", {
+                  bookSourceUrl: v.bookSourceUrl,
+                  errorMsg: res.data.errorMsg || "检测失败"
+                });
+                this.bookSourceTableKey++;
+              }
+              return res;
+            },
+            error => {
+              this.$store.commit("addFailureBookSource", {
+                bookSourceUrl: v.bookSourceUrl,
+                errorMsg: error ? error.toString() : "检测失败"
+              });
+              this.bookSourceTableKey++;
+              throw error;
             }
           );
         });
@@ -2223,6 +2436,8 @@ export default {
       }
     },
     showFailureBookSource() {
+      this.showSourceGroup = "";
+      this.bookSourcePagination.page = 1;
       this.getInvalidBookSources();
       this.isShowFailureBookSource = true;
       this.showBookSourceManageDialog = true;
@@ -2791,7 +3006,37 @@ export default {
       }
     },
     bookList() {
-      return this.isSearchResult ? this.searchResult : this.showShelfBooks;
+      return this.isSearchResult
+        ? this.searchGroupedResults
+        : this.showShelfBooks;
+    },
+    searchGroupedResults() {
+      const groupList = [];
+      const groupMap = {};
+      this.searchResult.forEach(book => {
+        const key = this.getSearchGroupKey(book);
+        if (!groupMap[key]) {
+          groupMap[key] = {
+            searchGroupKey: key,
+            sourceList: []
+          };
+          groupList.push(groupMap[key]);
+        }
+        groupMap[key].sourceList.push(book);
+      });
+      return groupList.map(group => {
+        const selectedUrl = this.searchGroupSelection[group.searchGroupKey];
+        const selectedBook =
+          group.sourceList.find(book => book.bookUrl === selectedUrl) ||
+          group.sourceList[0] ||
+          {};
+        return {
+          ...selectedBook,
+          searchGroupKey: group.searchGroupKey,
+          sourceList: group.sourceList,
+          sourceCount: group.sourceList.length
+        };
+      });
     },
     bookCoverList() {
       return this.bookList
@@ -3331,7 +3576,7 @@ export default {
               }
             }
 
-            .intro, .dur-chapter, .last-chapter {
+            .intro, .dur-chapter, .last-chapter, .search-source-summary {
               color: #6b6b6b;
               font-size: 13px;
               margin-top: 3px;
@@ -3343,6 +3588,113 @@ export default {
               -webkit-box-orient: vertical;
               -webkit-line-clamp: 1;
               text-align: left;
+            }
+
+            .search-source-summary {
+              color: #969ba3;
+            }
+
+            .search-source-switch {
+              .el-select {
+                width: 100%;
+              }
+            }
+
+            .search-footer {
+              display: block;
+              margin-top: auto;
+              padding-top: 10px;
+
+              .search-actions {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                align-items: center;
+                gap: 10px;
+                margin-top: 5px;
+              }
+
+              .search-action-buttons {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                white-space: nowrap;
+              }
+
+              .search-icon-btn {
+                width: 28px;
+                height: 28px;
+                padding: 0;
+                border: 1px solid #dcdfe6;
+                border-radius: 4px;
+                background: #fff;
+                color: #606266;
+                cursor: pointer;
+                line-height: 26px;
+              }
+
+              .search-source-switch {
+                min-width: 0;
+              }
+
+              .setting-connect {
+                margin-bottom: 0;
+              }
+            }
+          }
+        }
+      }
+
+      &.search-books-wrapper {
+        .wrapper {
+          grid-template-columns: repeat(auto-fill, minmax(430px, 1fr));
+          justify-content: stretch;
+          grid-gap: 14px;
+
+          .book.search-book {
+            box-sizing: border-box;
+            width: 100%;
+            min-height: 176px;
+            margin-bottom: 6px;
+            padding: 18px 20px;
+            justify-content: flex-start;
+            display: grid;
+            grid-template-columns: 96px minmax(0, 1fr);
+            column-gap: 18px;
+
+            .cover-img {
+              width: 96px;
+              height: 128px;
+
+              .cover {
+                width: 96px;
+                height: 128px;
+              }
+            }
+
+            .info {
+              height: auto;
+              min-height: 128px;
+              justify-content: flex-start;
+              min-width: 0;
+              margin-left: 0;
+
+              .name {
+                width: auto;
+                margin-right: 34px;
+              }
+
+              .sub {
+                margin-top: 4px;
+              }
+
+              .last-chapter {
+                margin-top: 8px;
+                -webkit-line-clamp: 2;
+              }
+            }
+
+            .book-operation {
+              display: none;
             }
           }
         }
@@ -3393,7 +3745,7 @@ export default {
   .book .info .sub {
     color: #6b6b6b !important;
   }
-  .book .info .intro, .book .info .dur-chapter, .book .info .last-chapter {
+  .book .info .intro, .book .info .dur-chapter, .book .info .last-chapter, .book .info .search-source-summary {
     color: #969ba3 !important;
   }
 
@@ -3601,6 +3953,37 @@ export default {
             width: 100%;
             margin-bottom: 0;
             padding: 10px 20px;
+          }
+
+          .book.search-book {
+            grid-template-columns: 76px minmax(0, 1fr);
+            column-gap: 14px;
+            min-height: 154px;
+
+            .cover-img {
+              width: 76px;
+              height: 102px;
+
+              .cover {
+                width: 76px;
+                height: 102px;
+              }
+            }
+
+            .info {
+              min-height: 128px;
+
+              .search-footer {
+                .search-actions {
+                  grid-template-columns: 1fr;
+                  gap: 8px;
+                }
+
+                .search-action-buttons {
+                  justify-content: flex-end;
+                }
+              }
+            }
           }
         }
       }

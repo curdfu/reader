@@ -10,6 +10,7 @@ import io.legado.app.data.entities.RssSource
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.SearchResult
 import io.legado.app.exception.TocEmptyException
+import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.help.DefaultData
 import io.vertx.ext.web.Route
@@ -84,6 +85,7 @@ import kotlinx.coroutines.CoroutineScope
 import me.ag2s.epublib.domain.*
 import me.ag2s.epublib.epub.EpubWriter
 import me.ag2s.epublib.util.ResourceUtil
+import okhttp3.Request
 // import io.legado.app.help.coroutine.Coroutine
 
 private val logger = KotlinLogging.logger {}
@@ -181,6 +183,9 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             context.response().setStatusCode(404).end()
             return
         }
+        if (coverUrl.startsWith("//")) {
+            coverUrl = "http:$coverUrl"
+        }
         var ext = getFileExt(coverUrl, "png")
         val md5Encode = MD5Utils.md5Encode(coverUrl).toString()
         var cachePath = getWorkDir("storage", "cache", md5Encode + "." + ext)
@@ -195,17 +200,33 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             cacheFile.parentFile.mkdirs()
         }
 
-        launch(Dispatchers.IO) {
-            webClient.getAbs(coverUrl).timeout(3000).send {
-                var bodyBytes = it.result()?.bodyAsBuffer()?.getBytes()
-                if (bodyBytes != null) {
-                    var res = context.response().putHeader("Cache-Control", "86400")
-                    cacheFile.writeBytes(bodyBytes)
-                    res.sendFile(cacheFile.toString())
-                } else {
-                    context.response().setStatusCode(404).end()
+        try {
+            val bodyBytes = withContext(Dispatchers.IO) {
+                val urlInfo = URL(coverUrl)
+                val referer = urlInfo.protocol + "://" + urlInfo.host + "/"
+                val request = Request.Builder()
+                    .url(coverUrl)
+                    .header("User-Agent", "Mozilla/5.0 reader")
+                    .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+                    .header("Referer", referer)
+                    .build()
+                okHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw Exception("HTTP ${response.code}")
+                    }
+                    response.body?.bytes()
                 }
             }
+            if (bodyBytes != null && bodyBytes.isNotEmpty()) {
+                var res = context.response().putHeader("Cache-Control", "86400")
+                cacheFile.writeBytes(bodyBytes)
+                res.sendFile(cacheFile.toString())
+            } else {
+                context.response().setStatusCode(404).end()
+            }
+        } catch(e: Exception) {
+            logger.warn(e) { "get cover failed: $coverUrl" }
+            context.response().setStatusCode(404).end()
         }
     }
 
@@ -580,7 +601,8 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
         } else {
             // 查找章节缓存
             var chapterCacheFile: File? = null
-            if (refresh <= 0 && appConfig.cacheChapterContent) {
+            val shouldCacheChapterContent = appConfig.cacheChapterContent || cache == 1
+            if (refresh <= 0 && shouldCacheChapterContent) {
                 val localCacheDir = getChapterCacheDir(bookInfo, userNameSpace)
                 chapterCacheFile = File(localCacheDir.absolutePath + File.separator + chapterIndex + ".txt")
                 if (chapterCacheFile.exists()) {
@@ -591,7 +613,7 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             }
             try {
                 content = WebBook(bookSource ?: "", appConfig.debugLog).getBookContent(bookInfo, chapterInfo, nextChapterUrl)
-                if (appConfig.cacheChapterContent && chapterCacheFile != null) {
+                if (shouldCacheChapterContent && chapterCacheFile != null) {
                     chapterCacheFile.writeText(content)
                     // 保存图片
                     BookHelp.saveImages(
@@ -715,7 +737,6 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             isEnd = true
         }
         var resultList = arrayListOf<SearchBook>()
-        var resultMap = mutableMapOf<String, Int>()
         val book = Book()
         book.name = key
         limitConcurrent(concurrentCount, lastIndex + 1, userBookSourceList.size, {it->
@@ -727,12 +748,7 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             list.forEach {
                 val bookList = it as? Collection<SearchBook>
                 bookList?.forEach { book ->
-                    // 按照 书名 + 作者名 过滤
-                    val bookKey = book.name + '_' + book.author
-                    if (!resultMap.containsKey(bookKey)) {
-                        resultList.add(book)
-                        resultMap.put(bookKey, 1)
-                    }
+                    resultList.add(book)
                 }
             }
             logger.info("Loog: {} resultList.size: {}", loopCount, resultList.size)
@@ -806,7 +822,6 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             isEnd = true
         }
         var resultList = arrayListOf<SearchBook>()
-        var resultMap = mutableMapOf<String, Int>()
         val book = Book()
         book.name = key
         limitConcurrent(concurrentCount, lastIndex + 1, userBookSourceList.size, {it->
@@ -819,13 +834,8 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             list.forEach {
                 val bookList = it as? Collection<SearchBook>
                 bookList?.forEach { book ->
-                    // 按照 书名 + 作者名 过滤
-                    val bookKey = book.name + '_' + book.author
-                    if (!resultMap.containsKey(bookKey)) {
-                        resultList.add(book)
-                        loopResult.add(book)
-                        resultMap.put(bookKey, 1)
-                    }
+                    resultList.add(book)
+                    loopResult.add(book)
                 }
             }
             // 返回本轮数据
@@ -1760,6 +1770,7 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
                                 var bookChapter = bookChapterList.last()
                                 book.latestChapterTitle = bookChapter.title
                             }
+                            fillUnreadChapterTitle(book, bookChapterList)
                             if (bookChapterList.size - book.totalChapterNum > 0) {
                                 book.lastCheckTime = System.currentTimeMillis()
                                 book.lastCheckCount = bookChapterList.size - book.totalChapterNum
@@ -1771,9 +1782,39 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
                     e.printStackTrace()
                 }
             }
+            if (book.unreadChapterTitle.isNullOrBlank()) {
+                fillUnreadChapterTitleFromCache(book, userNameSpace)
+            }
             bookList.add(book)
         }
         return bookList
+    }
+
+    fun fillUnreadChapterTitle(book: Book, bookChapterList: List<BookChapter>) {
+        val unreadIndex = book.durChapterIndex + 1
+        if (unreadIndex >= 0 && unreadIndex < bookChapterList.size) {
+            book.unreadChapterTitle = bookChapterList[unreadIndex].title
+        } else {
+            book.unreadChapterTitle = null
+        }
+    }
+
+    fun fillUnreadChapterTitleFromCache(book: Book, userNameSpace: String) {
+        if (book.isLocalBook()) {
+            return
+        }
+        val unreadIndex = book.durChapterIndex + 1
+        if (unreadIndex < 0) {
+            return
+        }
+        val md5Encode = MD5Utils.md5Encode(book.bookUrl).toString()
+        val chapterList: JsonArray? = asJsonArray(getUserStorage(userNameSpace, book.name + "_" + book.author, md5Encode))
+        if (chapterList != null) {
+            book.totalChapterNum = chapterList.size()
+            if (unreadIndex < chapterList.size()) {
+                book.unreadChapterTitle = chapterList.getJsonObject(unreadIndex).mapTo(BookChapter::class.java).title
+            }
+        }
     }
 
 

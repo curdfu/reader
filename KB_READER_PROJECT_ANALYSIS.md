@@ -599,6 +599,11 @@ com.htmake.reader.ReaderUIApplicationKt
 
 服务端构建脚本会移除或避开 `ReaderUIApplication.kt`，使用 `cli.gradle` 构建服务端 jar。
 
+当前构建环境事实：
+
+- `build.sh` 当前选择 Java 11，用于兼容 Gradle 6.1.1。
+- 使用 JDK 26 会触发 Groovy/Gradle 兼容问题，不适合作为当前构建 JDK。
+
 ### 10.2 前端构建
 
 `web/package.json`：
@@ -648,7 +653,7 @@ com.htmake.reader.ReaderUIApplicationKt
 src/test/java/com/htmake/reader/ReaderApplicationTests.java
 ```
 
-当前只有一个 Spring Boot context load 空测试：
+历史基础测试只有一个 Spring Boot context load 空测试：
 
 ```java
 @SpringBootTest
@@ -659,14 +664,37 @@ public class ReaderApplicationTests {
 }
 ```
 
+当前已补充书源兼容相关离线回归测试，覆盖：
+
+- 非文本源导入过滤和导入报告。
+- WebView 字段兼容与明确失败边界。
+- POST body + GB2312 charset + 自定义 header。
+- chapterUrl 的 `,{"webView":true}` option 在目录解析和 `BookChapter.getAbsoluteURL()` 中不丢失。
+- 正文规则抽取、`replaceRegex`、`@js`、`<js>`。
+
 缺口：
 
 - 没有 API 行为测试。
 - 没有文件路径安全测试。
 - 没有用户隔离测试。
 - 没有 WebDAV 测试。
-- 没有书源解析回归测试。
+- 书源解析回归测试已有基础覆盖，但仍缺少联网样本、真实站点和端到端 API 回归。
 - 没有前端单元测试或 E2E 测试配置证据。
+
+## 11.1 书源兼容现状摘要
+
+截至 2026-05-07，书源兼容主线当前状态：
+
+- 文本源过滤：批量导入会过滤音频、漫画/图片、文件类等非文本源；单源保存会拒绝非文本源。
+- 导入报告：批量导入返回导入、跳过、按类型统计和跳过原因。
+- 模型兼容：`enabledCookieJar`、`loginUi`、`variableComment`、`ruleReview` 等字段可导入和保存。
+- CookieStore：已实现持久化、响应 `Set-Cookie` 保存、请求 Cookie 注入；仅 `enabledCookieJar=true` 时启用。
+- URL option：已兼容 `method`、`charset`、`headers`、`body`、`retry`、`type`、`webView`、`webJs`、`js`。
+- JS 扩展：常用扩展已补齐，包括 `sha`、`decodeURI`、`time`、`random` 等。
+- WebView：当前只识别并保留 `webView`、`webJs` 字段；不实现 JavaFX/Chromium WebView Provider。需要 WebView 执行时明确失败：`当前书源需要 WebView，但 reader 服务版暂未启用 WebView 执行环境`。
+- 离线主链路测试：已覆盖导入过滤、WebView 边界、POST charset/header、chapterUrl option、正文 `content`/`replaceRegex`/JS。
+
+按用户要求，缓存/导出/搜索回归、RSS 后续对齐、替换规则后续对齐暂缓；`sourceRegex` 资源嗅探和 WebView Cookie 回写也不是当前已实现能力。
 
 ## 12. 关键安全风险
 

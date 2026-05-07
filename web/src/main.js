@@ -85,7 +85,7 @@ try {
           if (useSW && window.serviceWorkerReady) {
             return url;
           }
-          return this.api + "/cover?path=" + url;
+          return this.api + "/cover?path=" + encodeURIComponent(url);
         }
         if (!url) return false;
         // 默认是接口服务器上的资源

@@ -75,7 +75,7 @@ export const LimitResquest = function(limit, process) {
 
 export const networkFirstRequest = async function(requestFunc, cacheKey) {
   cacheKey = "localCache@" + cacheKey;
-  const res = await requestFunc().catch(() => {
+  const res = await requestFunc().catch(error => {
     // 请求出错，使用缓存
     // 使用新的异步存储
     return window.$cacheStorage
@@ -84,14 +84,15 @@ export const networkFirstRequest = async function(requestFunc, cacheKey) {
         if (cacheResponse) {
           return { data: cacheResponse };
         }
+        throw error;
       })
-      .catch(err => {
+      .catch(() => {
         // 兼容旧逻辑
         const cacheResponse = getCache(cacheKey);
         if (cacheResponse) {
           return { data: cacheResponse };
         }
-        throw err;
+        throw error;
       });
   });
   if (res.data && res.data.isSuccess) {

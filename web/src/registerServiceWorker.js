@@ -2,12 +2,38 @@
 
 import { register } from "register-service-worker";
 
+function activateWorker(registration) {
+  const worker =
+    registration && (registration.waiting || registration.installing);
+  if (worker) {
+    worker.postMessage({ type: "SKIP_WAITING" });
+  }
+}
+
+function clearHomeCache() {
+  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: "CLEAR_HOME_CACHE"
+    });
+  }
+}
+
 export function registerServiceWorker() {
   try {
     if (
       process.env.NODE_ENV === "production" &&
       !window.getQueryString("nopwa")
     ) {
+      if ("serviceWorker" in navigator) {
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (refreshing) {
+            return;
+          }
+          refreshing = true;
+          window.location.reload(true);
+        });
+      }
       register(`${process.env.BASE_URL}service-worker.js`, {
         ready() {
           // console.log(
@@ -18,19 +44,37 @@ export function registerServiceWorker() {
         },
         registered(registration) {
           // console.log("Service worker has been registered.");
+          registration.update();
+          registration.addEventListener("updatefound", () => {
+            const newWorker = registration.installing;
+            if (!newWorker) {
+              return;
+            }
+            newWorker.addEventListener("statechange", () => {
+              if (newWorker.state === "installed") {
+                clearHomeCache();
+                activateWorker(registration);
+              }
+            });
+          });
           if (window.localStorage) {
             const currentVersion = window.localStorage.getItem(
               "READER_APP_BUILD_VERSION"
             );
             const newVersion = process.env.VUE_APP_BUILD_VERSION;
             if (currentVersion !== newVersion) {
-              registration.active.postMessage({ type: "SKIP_WAITING" });
+              clearHomeCache();
+              activateWorker(registration);
               window.localStorage.setItem(
                 "READER_APP_BUILD_VERSION",
                 newVersion
               );
             }
           }
+        },
+        updated(registration) {
+          clearHomeCache();
+          activateWorker(registration);
         }
         // cached() {
         //   console.log("Content has been cached for offline use.");

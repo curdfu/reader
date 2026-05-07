@@ -35,9 +35,11 @@ data class BookSource(
     var customOrder: Int = 0,                 // 手动排序编号
     var enabled: Boolean = true,            // 是否启用
     var enabledExplore: Boolean = true,     //启用发现
+    override var enabledCookieJar: Boolean? = false,    // 启用CookieJar
     override var concurrentRate: String? = null,    //并发率
     override var header: String? = null,
     override var loginUrl: String? = null,             // 登录地址
+    var loginUi: String? = null,              // 登录UI
     var loginCheckJs: String? = null,           // 登录检测js
     var lastUpdateTime: Long = 0,             // 最后更新时间，用于排序
     var weight: Int = 0,                      // 智能排序的权重
@@ -48,7 +50,9 @@ data class BookSource(
     var ruleBookInfo: BookInfoRule? = null,         // 书籍信息页规则
     var ruleToc: TocRule? = null,                   // 目录页规则
     var ruleContent: ContentRule? = null,            // 正文页规则
+    var ruleReview: Any? = null,                    // 评论规则，第一阶段仅兼容保存
     var bookSourceComment: String? = null,           // 注释
+    var variableComment: String? = null,             // 变量注释
     var respondTime: Long = 180000L,               // 响应时间，用于排序
 ) : BaseSource {
 //    @Ignore
@@ -149,8 +153,11 @@ data class BookSource(
                 && equal(bookUrlPattern, source.bookUrlPattern)
                 && enabled == source.enabled
                 && enabledExplore == source.enabledExplore
+                && enabledCookieJar == source.enabledCookieJar
+                && equal(concurrentRate, source.concurrentRate)
                 && equal(header, source.header)
                 && equal(loginUrl, source.loginUrl)
+                && equal(loginCheckJs, source.loginCheckJs)
                 && equal(exploreUrl, source.exploreUrl)
                 && equal(searchUrl, source.searchUrl)
                 && getSearchRule() == source.getSearchRule()

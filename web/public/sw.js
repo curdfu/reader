@@ -2,6 +2,13 @@ self.addEventListener("message", event => {
   if (event.data && event.data.type === "CLEAR_HOME_CACHE") {
     self.caches.delete("home");
   }
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+self.addEventListener("activate", event => {
+  event.waitUntil(self.clients.claim());
 });
 
 workbox.routing.setDefaultHandler(async ({ event }) => {

@@ -21,9 +21,11 @@ import com.htmake.reader.init.appCtx
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.Charset
 import java.util.*
+import java.util.concurrent.ThreadLocalRandom
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.text.SimpleDateFormat
@@ -111,7 +113,7 @@ interface JsExtensions {
      * @return 返回js获取的内容
      */
     fun webView(html: String?, url: String?, js: String?): String? {
-        return null
+        throw NoStackTraceException(AnalyzeUrl.WEB_VIEW_UNSUPPORTED_MSG)
     }
 
     /**
@@ -247,12 +249,52 @@ interface JsExtensions {
         return EncoderUtils.base64Encode(str, flags)
     }
 
+    fun base64(str: String): String {
+        return base64Encode(str) ?: ""
+    }
+
     fun md5Encode(str: String): String {
         return MD5Utils.md5Encode(str)
     }
 
     fun md5Encode16(str: String): String {
         return MD5Utils.md5Encode16(str)
+    }
+
+    fun md5(str: String): String {
+        return md5Encode(str)
+    }
+
+    fun sha1Encode(str: String): String {
+        return digestHex(str, "SHA-1") ?: ""
+    }
+
+    fun sha1(str: String): String {
+        return sha1Encode(str)
+    }
+
+    fun sha256Encode(str: String): String {
+        return digestHex(str, "SHA-256") ?: ""
+    }
+
+    fun sha256(str: String): String {
+        return sha256Encode(str)
+    }
+
+    fun sha512Encode(str: String): String {
+        return digestHex(str, "SHA-512") ?: ""
+    }
+
+    fun sha512(str: String): String {
+        return sha512Encode(str)
+    }
+
+    fun time(): Long {
+        return System.currentTimeMillis()
+    }
+
+    fun timeSecond(): Long {
+        return System.currentTimeMillis() / 1000
     }
 
     /**
@@ -293,6 +335,22 @@ interface JsExtensions {
     fun encodeURI(str: String, enc: String): String {
         return try {
             URLEncoder.encode(str, enc)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    fun decodeURI(str: String): String {
+        return try {
+            URLDecoder.decode(str, "UTF-8")
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    fun decodeURI(str: String, enc: String): String {
+        return try {
+            URLDecoder.decode(str, enc)
         } catch (e: Exception) {
             ""
         }
@@ -539,6 +597,27 @@ interface JsExtensions {
      */
     fun randomUUID(): String {
         return UUID.randomUUID().toString()
+    }
+
+    fun random(): Double {
+        return ThreadLocalRandom.current().nextDouble()
+    }
+
+    fun random(min: Int, max: Int): Int {
+        val lower = minOf(min, max)
+        val upper = maxOf(min, max)
+        return ThreadLocalRandom.current().nextLong(lower.toLong(), upper.toLong() + 1).toInt()
+    }
+
+    fun randomStr(length: Int): String {
+        if (length <= 0) return ""
+        val chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        val random = ThreadLocalRandom.current()
+        return buildString(length) {
+            repeat(length) {
+                append(chars[random.nextInt(chars.length)])
+            }
+        }
     }
 
     /**
