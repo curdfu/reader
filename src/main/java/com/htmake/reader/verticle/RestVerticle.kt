@@ -15,7 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import mu.KotlinLogging
 import com.htmake.reader.utils.error
+import com.htmake.reader.utils.getWorkDir
 import com.htmake.reader.utils.success
+import java.io.File
 import java.net.URLDecoder
 
 
@@ -70,7 +72,15 @@ abstract class RestVerticle : CoroutineVerticle() {
             }
         }
 
-        router.route().handler(BodyHandler.create())
+        val uploadsDir = File(getWorkDir("file-uploads"))
+        if (!uploadsDir.exists()) {
+            uploadsDir.mkdirs()
+        }
+        router.route().handler(
+            BodyHandler.create()
+                .setUploadsDirectory(uploadsDir.path)
+                .setBodyLimit(100L * 1024 * 1024)
+        )
 
         router.route().handler(LoggerHandler.create(LoggerFormat.DEFAULT));
         router.route("/reader3/*").handler {
