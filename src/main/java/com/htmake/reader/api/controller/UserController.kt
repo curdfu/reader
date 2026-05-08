@@ -467,6 +467,12 @@ class UserController(coroutineContext: CoroutineContext): BaseController(corouti
         return returnData.setData(userConfig.map)
     }
 
+    private fun resolveUploadFileName(type: String, fileName: String, targetDir: File): String {
+        return resolveUploadAssetFileName(type, fileName) { candidate ->
+            File(targetDir, candidate).exists()
+        }
+    }
+
     suspend fun uploadFile(context: RoutingContext): ReturnData {
         val returnData = ReturnData()
         if (!checkAuth(context)) {
@@ -482,21 +488,34 @@ class UserController(coroutineContext: CoroutineContext): BaseController(corouti
             type = "images"
         }
         // logger.info("type: {}", type)
-        context.fileUploads().forEach {
-            var file = File(it.uploadedFileName())
-            logger.info("uploadFile: {} {} {}", it.uploadedFileName(), it.fileName(), file)
+        for (upload in context.fileUploads()) {
+            var file = File(upload.uploadedFileName())
+            logger.info("uploadFile: {} {} {}", upload.uploadedFileName(), upload.fileName(), file)
             if (file.exists()) {
-                var fileName = it.fileName()
-                var newFile = File(getWorkDir("storage", "assets", userNameSpace, type, fileName))
-                if (!newFile.parentFile.exists()) {
-                    newFile.parentFile.mkdirs()
+                val targetDir = File(getWorkDir("storage", "assets", userNameSpace, type))
+                if (!targetDir.exists() && !targetDir.mkdirs()) {
+                    file.deleteRecursively()
+                    return returnData.setErrorMsg("创建上传目录失败")
                 }
-                if (newFile.exists()) {
-                    newFile.delete()
+                val fileName = resolveUploadFileName(type, upload.fileName(), targetDir)
+                var newFile = File(targetDir, fileName)
+                if (newFile.exists() && type != "fonts" && !newFile.delete()) {
+                    file.deleteRecursively()
+                    return returnData.setErrorMsg("替换已有文件失败")
                 }
                 logger.info("moveTo: {}", newFile)
-                if (file.copyRecursively(newFile)) {
+                val copied = try {
+                    file.copyTo(newFile, overwrite = type != "fonts")
+                    true
+                } catch (e: Exception) {
+                    logger.error(e) { "upload file failed: $newFile" }
+                    false
+                }
+                if (copied) {
                     fileList.add("/assets/" + userNameSpace + "/" + type + "/" + fileName)
+                } else {
+                    file.deleteRecursively()
+                    return returnData.setErrorMsg("上传文件失败")
                 }
                 file.deleteRecursively()
             }
@@ -529,4 +548,30 @@ class UserController(coroutineContext: CoroutineContext): BaseController(corouti
         file.deleteRecursively()
         return returnData.setData("")
     }
+}
+
+internal fun resolveUploadAssetFileName(
+    type: String,
+    fileName: String,
+    exists: (String) -> Boolean
+): String {
+    val safeFileName = File(fileName).name
+    if (type != "fonts" || !exists(safeFileName)) {
+        return safeFileName
+    }
+    val dotIndex = safeFileName.lastIndexOf('.')
+    val name = if (dotIndex > 0) safeFileName.substring(0, dotIndex) else safeFileName
+    val ext = if (dotIndex > 0) safeFileName.substring(dotIndex) else ""
+    for (index in 0 until 1000) {
+        val suffix = if (index == 0) {
+            System.currentTimeMillis().toString()
+        } else {
+            "${System.currentTimeMillis()}-$index"
+        }
+        val candidate = "$name-$suffix$ext"
+        if (!exists(candidate)) {
+            return candidate
+        }
+    }
+    return "$name-${UUID.randomUUID()}$ext"
 }
