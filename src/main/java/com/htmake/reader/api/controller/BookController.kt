@@ -623,19 +623,21 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             // 查找章节缓存
             var chapterCacheFile: File? = null
             val shouldCacheChapterContent = appConfig.cacheChapterContent || cache == 1
-            if (refresh <= 0 && shouldCacheChapterContent) {
+            if (refresh <= 0) {
                 val localCacheDir = getChapterCacheDir(bookInfo, userNameSpace)
                 chapterCacheFile = File(localCacheDir.absolutePath + File.separator + chapterIndex + ".txt")
                 if (chapterCacheFile.exists()) {
                     content = chapterCacheFile.readText()
                     logger.info("使用缓存的章节内容: {}", chapterCacheFile.toString())
-                    return returnData.setData(content)
+                    return returnData.setData(content).setContentSource("serverCache")
                 }
             }
             try {
                 content = WebBook(bookSource ?: "", appConfig.debugLog).getBookContent(bookInfo, chapterInfo, nextChapterUrl)
-                if (shouldCacheChapterContent && chapterCacheFile != null) {
-                    chapterCacheFile.writeText(content)
+                if (shouldCacheChapterContent) {
+                    val localCacheDir = getChapterCacheDir(bookInfo, userNameSpace)
+                    val cacheFile = File(localCacheDir.absolutePath + File.separator + chapterIndex + ".txt")
+                    cacheFile.writeText(content)
                     // 保存图片
                     BookHelp.saveImages(
                         this,
@@ -658,7 +660,7 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
             }
         }
 
-        return returnData.setData(content)
+        return returnData.setData(content).setContentSource("source")
     }
 
     suspend fun exploreBook(context: RoutingContext): ReturnData {
@@ -2736,6 +2738,24 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
 
         concurrentCount = if(concurrentCount > 0) concurrentCount else 24
         logger.info("cacheBookSSE concurrentCount: {} refresh: {}", concurrentCount, refresh)
+        val sseLock = Object()
+        // 先发送已缓存章节的事件，供前端补齐阅读端缓存
+        for (chapterIndex in cachedChapterContentSet) {
+            if (isEnd) break
+            synchronized(sseLock) {
+                if (!isEnd) {
+                    val result = mapOf(
+                        "chapterIndex" to chapterIndex,
+                        "alreadyCached" to true,
+                        "cachedCount" to cachedChapterContentSet.size,
+                        "successCount" to successCount.get(),
+                        "failedCount" to failedCount.get(),
+                        "totalCount" to chapterList.size
+                    )
+                    response.write("data: " + jsonEncode(result, false) + "\n\n")
+                }
+            }
+        }
         limitConcurrent(concurrentCount, 0, chapterList.size, {it->
             if (!cachedChapterContentSet.contains(it)) {
                 val chapterIndex = it
@@ -2758,20 +2778,26 @@ class BookController(coroutineContext: CoroutineContext): BaseController(corouti
                         content
                     )
                 }
+                // 每缓存一章后发送 SSE 数据
+                synchronized(sseLock) {
+                    if (!isEnd) {
+                        val result = mapOf(
+                            "chapterIndex" to chapterIndex,
+                            "alreadyCached" to false,
+                            "cachedCount" to cachedChapterContentSet.size,
+                            "successCount" to successCount.get(),
+                            "failedCount" to failedCount.get(),
+                            "totalCount" to chapterList.size
+                        )
+                        response.write("data: " + jsonEncode(result, false) + "\n\n")
+                    }
+                }
             }
             it
         }) {list, loopCount ->
             if (isEnd) {
                 false
             } else {
-                // 返回本轮数据
-                val result = mapOf(
-                    "cachedCount" to cachedChapterContentSet.size,
-                    "successCount" to successCount.get(),
-                    "failedCount" to failedCount.get()
-                )
-                response.write("data: " + jsonEncode(result, false) + "\n\n")
-                logger.info("Loog: {} list.size: {} result: {}", loopCount, list.size, result)
                 true
             }
         }

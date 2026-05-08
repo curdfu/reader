@@ -356,7 +356,7 @@ export default {
       this[command](book);
     },
     async cacheBookSSE(book) {
-      const tryClose = () => {
+      const tryClose = ({ cancelLocalCache = true } = {}) => {
         try {
           if (
             window.cacheEventSource[book.bookUrl] &&
@@ -367,11 +367,22 @@ export default {
           }
           window.cacheEventSource[book.bookUrl] = null;
           delete window.cacheEventSource[book.bookUrl];
+          // 用户取消或 SSE 出错时，才清空阅读端缓存补齐队列。
+          if (
+            cancelLocalCache &&
+            window.cacheRequestHandle &&
+            window.cacheRequestHandle[book.bookUrl]
+          ) {
+            window.cacheRequestHandle[book.bookUrl].cancel();
+            delete window.cacheRequestHandle[book.bookUrl];
+          }
           const index = this.cachingBookList.findIndex(
             v => v.bookUrl === book.bookUrl
           );
-          this.cachingBookList.splice(index, 1);
-          this.cachingBookList = [].concat(this.cachingBookList);
+          if (index >= 0) {
+            this.cachingBookList.splice(index, 1);
+            this.cachingBookList = [].concat(this.cachingBookList);
+          }
         } catch (error) {
           //
         }
@@ -379,9 +390,7 @@ export default {
       if (this.isCaching(book)) {
         // 取消缓存
         this.$message.info("已取消缓存");
-        if (window.cacheEventSource[book.bookUrl]) {
-          tryClose();
-        }
+        tryClose();
         return;
       }
 
@@ -393,6 +402,16 @@ export default {
       const url = buildURL(this.api + "/cacheBookSSE", params);
 
       tryClose();
+
+      // 创建限流队列，限制阅读端缓存补齐的并发数为 2
+      if (!window.cacheRequestHandle) {
+        window.cacheRequestHandle = {};
+      }
+      window.cacheRequestHandle[book.bookUrl] = LimitResquest(2, handler => {
+        if (handler.isEnd() && window.cacheRequestHandle) {
+          delete window.cacheRequestHandle[book.bookUrl];
+        }
+      });
 
       this.cachingBookList = this.cachingBookList.concat([book]);
       window.cacheEventSource[book.bookUrl] = new EventSource(url, {
@@ -413,7 +432,7 @@ export default {
       });
       window.cacheEventSource[book.bookUrl].addEventListener("end", e => {
         this.$message.info(book.name + "缓存到服务器完成");
-        tryClose();
+        tryClose({ cancelLocalCache: false });
         try {
           if (e.data) {
             // const result = JSON.parse(e.data);
@@ -435,12 +454,80 @@ export default {
                 ...book,
                 cachedChapterCount: result.cachedCount
               });
+              // 服务端缓存成功后，通过限流队列触发阅读端缓存补齐
+              if (
+                result.chapterIndex !== undefined &&
+                window.cacheRequestHandle &&
+                window.cacheRequestHandle[book.bookUrl]
+              ) {
+                window.cacheRequestHandle[book.bookUrl](() => {
+                  return this.cacheChapterToLocal(book, result.chapterIndex);
+                });
+              }
             }
           }
         } catch (error) {
           //
         }
       });
+    },
+    async cacheChapterToLocal(book, chapterIndex) {
+      try {
+        const cacheKey =
+          "localCache@" +
+          book.name +
+          "_" +
+          book.author +
+          "@" +
+          book.bookUrl +
+          "@chapterContent-" +
+          chapterIndex;
+        // 检查是否已存在，避免重复计数
+        const existing = await window.$cacheStorage.getItem(cacheKey);
+        if (existing) {
+          if (!existing.__readerLocalChapterCache) {
+            window.$cacheStorage
+              .setItem(cacheKey, {
+                ...existing,
+                __readerLocalChapterCache: true
+              })
+              .catch(() => {});
+          }
+          // 已存在，不重复计数
+          return;
+        }
+        // 调用 getBookContent 获取章节内容，服务端应优先从本地缓存返回
+        const res = await this.$root.$children[0].getBookContent(
+          chapterIndex,
+          { timeout: 30000, silent: true },
+          false,
+          false,
+          book
+        );
+        if (res && res.data && res.data.isSuccess) {
+          // 写入阅读端缓存
+          window.$cacheStorage
+            .setItem(cacheKey, {
+              ...res.data,
+              __readerLocalChapterCache: true
+            })
+            .catch(() => {});
+          // 更新阅读端缓存计数
+          const index = this.bookList.findIndex(
+            v => v.bookUrl === book.bookUrl
+          );
+          if (index >= 0) {
+            const currentBook = this.bookList[index];
+            this.$set(this.bookList, index, {
+              ...currentBook,
+              localCacheCount: (currentBook.localCacheCount || 0) + 1
+            });
+          }
+        }
+      } catch (error) {
+        // 静默失败，不影响主流程
+        console.error("缓存章节到阅读端失败:", chapterIndex, error);
+      }
     },
     cacheBookLocal(book) {
       if (this.isCaching(book)) {

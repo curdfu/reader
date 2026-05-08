@@ -12,6 +12,9 @@ class ReturnData {
     var data: Any? = null
         private set
 
+    var contentSource: String? = null
+        private set
+
     fun setErrorMsg(errorMsg: String): ReturnData {
         this.isSuccess = false
         this.errorMsg = errorMsg
@@ -22,6 +25,11 @@ class ReturnData {
         this.isSuccess = true
         this.errorMsg = ""
         this.data = data
+        return this
+    }
+
+    fun setContentSource(source: String): ReturnData {
+        this.contentSource = source
         return this
     }
 }

@@ -105,8 +105,13 @@ export const networkFirstRequest = async function(requestFunc, cacheKey) {
 export const cacheFirstRequest = async function(
   requestFunc,
   cacheKey,
-  validateCache
+  validateCache,
+  cacheOptions
 ) {
+  cacheOptions = cacheOptions || {};
+  const writeCache = cacheOptions.writeCache !== false;
+  const transformCacheResponse = cacheOptions.transformCacheResponse;
+  const transformCacheWrite = cacheOptions.transformCacheWrite;
   cacheKey = "localCache@" + cacheKey;
   // validateCache === true 时，直接刷新缓存
   if (validateCache !== true) {
@@ -126,14 +131,20 @@ export const cacheFirstRequest = async function(
       });
     if (cacheResponse) {
       if (!validateCache || (validateCache && validateCache(cacheResponse))) {
-        return { data: cacheResponse };
+        const responseData = transformCacheResponse
+          ? transformCacheResponse(cacheResponse)
+          : cacheResponse;
+        return { data: { ...responseData, contentSource: "localCache" } };
       }
     }
   }
   const res = await requestFunc();
-  if (res.data && res.data.isSuccess) {
+  if (writeCache && res.data && res.data.isSuccess) {
     // 使用新的异步存储
-    window.$cacheStorage.setItem(cacheKey, res.data).catch(() => {});
+    const cacheData = transformCacheWrite
+      ? transformCacheWrite(res.data)
+      : res.data;
+    window.$cacheStorage.setItem(cacheKey, cacheData).catch(() => {});
   }
   return res;
 };

@@ -1,6 +1,7 @@
 param(
     [string]$TargetDir = "C:\GreenSoft\reader",
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipFrontendBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,9 +24,64 @@ function Copy-RequiredFile {
     Copy-Item -LiteralPath $source -Destination $target -Force
 }
 
+function Invoke-CheckedCommand {
+    param(
+        [string]$Name,
+        [string[]]$Arguments
+    )
+
+    & $Name @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Name $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Invoke-FrontendBuild {
+    $webDir = Join-Path $root "web"
+    $nodeModulesDir = Join-Path $webDir "node_modules"
+    $distWebDir = Join-Path $webDir "dist"
+    $resourceRoot = Join-Path $root "src\main\resources"
+    $resourceWebDir = Join-Path $resourceRoot "web"
+
+    if (!(Test-Path -LiteralPath $webDir)) {
+        throw "Missing web directory: $webDir"
+    }
+
+    Push-Location $webDir
+    try {
+        if (!(Test-Path -LiteralPath $nodeModulesDir)) {
+            Invoke-CheckedCommand "npm" @("install", "--legacy-peer-deps")
+        }
+
+        Invoke-CheckedCommand "npm" @("run", "build")
+    }
+    finally {
+        Pop-Location
+    }
+
+    if (!(Test-Path -LiteralPath $distWebDir)) {
+        throw "Missing frontend build output: $distWebDir"
+    }
+
+    $resolvedResourceRoot = [System.IO.Path]::GetFullPath($resourceRoot)
+    $resolvedResourceWebDir = [System.IO.Path]::GetFullPath($resourceWebDir)
+    if (!$resolvedResourceWebDir.StartsWith($resolvedResourceRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to replace unexpected resource path: $resourceWebDir"
+    }
+
+    if (Test-Path -LiteralPath $resourceWebDir) {
+        Remove-Item -LiteralPath $resourceWebDir -Recurse -Force
+    }
+    Move-Item -LiteralPath $distWebDir -Destination $resourceWebDir
+}
+
 Set-Location $root
 
 if (!$SkipBuild) {
+    if (!$SkipFrontendBuild) {
+        Invoke-FrontendBuild
+    }
+
     & .\gradlew.bat packageDist
     if ($LASTEXITCODE -ne 0) {
         throw "packageDist failed with exit code $LASTEXITCODE"

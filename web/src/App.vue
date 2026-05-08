@@ -802,6 +802,12 @@ export default {
       if (cache) {
         params.cache = 1;
       }
+      const localChapterCacheFlag = "__readerLocalChapterCache";
+      const validateChapterCache =
+        refresh === true
+          ? true
+          : cacheResponse =>
+              !!(cacheResponse && cacheResponse[localChapterCacheFlag]);
       return cacheFirstRequest(
         () =>
           Axios.post(this.api + "/getBookContent", params, {
@@ -815,7 +821,14 @@ export default {
           book.bookUrl +
           "@chapterContent-" +
           chapterIndex,
-        refresh
+        validateChapterCache,
+        {
+          writeCache: cache === true,
+          transformCacheWrite: data => ({
+            ...data,
+            [localChapterCacheFlag]: true
+          })
+        }
       );
     },
     initEditor() {

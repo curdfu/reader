@@ -12,8 +12,7 @@ function buildVersion() {
   );
 }
 process.env.VUE_APP_BUILD_VERSION =
-  process.env.VUE_APP_BUILD_VERSION ||
-  "v" + packageInfo.version;
+  process.env.VUE_APP_BUILD_VERSION || "v" + packageInfo.version;
 
 function customWorkboxPlugin(generateCacheKey, checkResponse) {
   return {

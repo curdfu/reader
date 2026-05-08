@@ -103,10 +103,7 @@
             <div class="icon-text">设置</div>
           </div>
         </el-popover>
-        <div
-          class="tool-icon"
-          @click="showCacheContent"
-        >
+        <div class="tool-icon" @click="showCacheContent">
           <div class="iconfont">
             &#58917;
           </div>
@@ -408,7 +405,16 @@
         <div class="close-btn" @click="showClickZone = false">关闭</div>
       </div>
       <div class="top-bar" ref="top">
-        {{ $store.state.miniInterface ? title : "" }}
+        <template v-if="$store.state.miniInterface">
+          <span class="chapter-title">{{ title }}</span>
+          <span
+            class="mobile-content-source"
+            v-if="show && contentSource"
+            :title="contentSourceLabel"
+          >
+            （{{ contentSourceShortLabel }}）
+          </span>
+        </template>
       </div>
       <div
         class="content"
@@ -451,6 +457,13 @@
           @click="toNextChapter()"
           >加载下一章</span
         >
+        <span
+          class="content-source-tag"
+          v-if="show && contentSource && !$store.state.miniInterface"
+          :title="contentSourceLabel"
+        >
+          {{ contentSourceShortLabel }}
+        </span>
       </div>
     </div>
   </div>
@@ -743,7 +756,9 @@ export default {
       showPrevChapterSize: 0,
 
       speechMinutes: 0,
-      speechEndTime: 0
+      speechEndTime: 0,
+
+      contentSource: ""
     };
   },
   computed: {
@@ -1054,6 +1069,22 @@ export default {
     },
     chineseFont() {
       return this.config.chineseFont;
+    },
+    contentSourceLabel() {
+      const labels = {
+        localCache: "阅读端本地缓存",
+        serverCache: "服务器缓存",
+        source: "书源实时获取"
+      };
+      return labels[this.contentSource] || "";
+    },
+    contentSourceShortLabel() {
+      const labels = {
+        localCache: "本地",
+        serverCache: "服务器",
+        source: "书源"
+      };
+      return labels[this.contentSource] || "";
     }
   },
   methods: {
@@ -1244,11 +1275,13 @@ export default {
           if (res.data.isSuccess) {
             let data = res.data.data;
             this.content = this.filterContent(data);
+            this.contentSource = res.data.contentSource || "source";
             this.addChapterContentToCache({
               bookUrl,
               index: index,
               title: chapterName,
               content: res.data.data,
+              contentSource: this.contentSource,
               error: false
             });
             this.loading.close();
@@ -1383,6 +1416,7 @@ export default {
               index: index,
               title: chapterName,
               content: res.data.data,
+              contentSource: res.data.contentSource || "source",
               error: false
             });
           } else {
@@ -1429,6 +1463,17 @@ export default {
         this.chapterContentCache.chapters[chapter.index] = chapter;
       }
     },
+    updateContentSourceForChapter(index) {
+      if (
+        this.chapterContentCache &&
+        this.chapterContentCache.chapters[index] &&
+        this.chapterContentCache.chapters[index].contentSource
+      ) {
+        this.contentSource = this.chapterContentCache.chapters[
+          index
+        ].contentSource;
+      }
+    },
     computeShowChapterList(reset) {
       if (!this.chapterContentCache) {
         return new Promise(resolve => {
@@ -1472,6 +1517,8 @@ export default {
       this.startSavePosition = false;
       // 记录当前章节
       this.showChapterList = list;
+      // 更新当前章节来源
+      this.updateContentSourceForChapter(this.chapterIndex);
       this.$nextTick(() => {
         this.computePages(() => {
           if (reset) {
@@ -3453,6 +3500,14 @@ export default {
         width: 80%;
         box-sizing: border-box;
       }
+      .content-source-tag {
+        font-size: 12px;
+        opacity: 0.6;
+        margin-left: 8px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        background: rgba(128, 128, 128, 0.15);
+      }
     }
   }
 
@@ -3713,6 +3768,23 @@ export default {
       padding-top: calc(6px + constant(safe-area-inset-top));
       padding-top: calc(6px + env(safe-area-inset-top));
       font-size: 12px;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+
+      .chapter-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .mobile-content-source {
+        flex: 0 0 auto;
+        margin-left: 4px;
+        opacity: 0.65;
+        white-space: nowrap;
+      }
     }
 
     .content-inner {
