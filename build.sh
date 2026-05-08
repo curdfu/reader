@@ -9,19 +9,19 @@ version=""
 
 checkJava()
 {
-    if [ -d /Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home ]; then
-        export JAVA_HOME=/Library/Java/JavaVirtualMachines/openjdk-11.jdk/Contents/Home
+    if [ -d /Library/Java/JavaVirtualMachines/openjdk-21.jdk/Contents/Home ]; then
+        export JAVA_HOME=/Library/Java/JavaVirtualMachines/openjdk-21.jdk/Contents/Home
     fi
 
-    if [ -z "$JAVA_HOME" ] || ! { [ -x "$JAVA_HOME/bin/java" ] && "$JAVA_HOME/bin/java" -version 2>&1 | grep -q 'version "11\.'; }; then
+    if [ -z "$JAVA_HOME" ] || ! { [ -x "$JAVA_HOME/bin/java" ] && "$JAVA_HOME/bin/java" -version 2>&1 | grep -q 'version "21\.'; }; then
         for jdkHome in \
-            "/c/Program Files/Eclipse Adoptium/jdk-11"* \
-            "/c/Program Files/Java/jdk-11"* \
-            "/c/Program Files/Microsoft/jdk-11"* \
-            "/c/Program Files/Amazon Corretto/jdk11"* \
+            "/c/Program Files/Eclipse Adoptium/jdk-21"* \
+            "/c/Program Files/Java/jdk-21"* \
+            "/c/Program Files/Microsoft/jdk-21"* \
+            "/c/Program Files/Amazon Corretto/jdk21"* \
             "/Library/Java/JavaVirtualMachines/"*"/Contents/Home"
         do
-            if [ -d "$jdkHome/bin" ] && "$jdkHome/bin/java" -version 2>&1 | grep -q 'version "11\.'; then
+            if [ -d "$jdkHome/bin" ] && "$jdkHome/bin/java" -version 2>&1 | grep -q 'version "21\.'; then
                 export JAVA_HOME="$jdkHome"
                 break
             fi
@@ -33,24 +33,21 @@ checkJava()
     fi
 
     if ! command -v java >/dev/null 2>&1; then
-        echo "Java not found. Please install JDK 11 and set JAVA_HOME."
+        echo "Java not found. Please install JDK 21 and set JAVA_HOME."
         exit 1
     fi
 
     javaVersionOutput=$(java -version 2>&1)
     javaMajorVersion=$(echo "$javaVersionOutput" | awk -F '"' '/version/ {print $2; exit}' | awk -F. '{ if ($1 == "1") print $2; else print $1 }')
 
-    if [[ -z "$javaMajorVersion" || "$javaMajorVersion" -lt "11" ]]; then
-        echo "Java version must not be lower than 11.0"
+    if [[ -z "$javaMajorVersion" || "$javaMajorVersion" -lt "21" ]]; then
+        echo "Java version must not be lower than 21 for Route A."
         echo "$javaVersionOutput"
         exit 1
     fi
 
-    if [[ "$javaMajorVersion" -gt "13" ]]; then
-        echo "Gradle 6.1.1 is not compatible with Java $javaMajorVersion."
-        echo "Please use JDK 11 for this project, then rerun: ./build.sh $task"
-        echo "$javaVersionOutput"
-        exit 1
+    if [[ "$javaMajorVersion" -gt "21" ]]; then
+        echo "Warning: Java $javaMajorVersion detected. Route A is validated against JDK 21."
     fi
 
     echo "Using Java $javaMajorVersion from: $(command -v java)"

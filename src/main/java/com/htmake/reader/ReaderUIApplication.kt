@@ -32,7 +32,7 @@ import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.ApplicationListener
 import org.springframework.context.ApplicationEvent
 import uk.org.lidalia.sysoutslf4j.context.SysOutOverSLF4J
-import javax.annotation.PostConstruct
+import jakarta.annotation.PostConstruct
 
 import javafx.application.Application
 import javafx.application.Platform

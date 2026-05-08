@@ -6,8 +6,7 @@ import io.github.fvarrui.javapackager.model.WindowsConfig
 import de.undercouch.gradle.tasks.download.Download
 
 buildscript {
-    val kotlin_version: String by extra{"1.5.21"}
-    // extra["kotlin_version"] = "1.5.21"
+    val kotlin_version: String by extra{"1.9.25"}
     repositories {
 	    mavenLocal()
         mavenCentral()
@@ -15,14 +14,15 @@ buildscript {
     dependencies {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
         classpath("io.github.fvarrui:javapackager:1.6.5")
+        classpath("de.undercouch:gradle-download-task:5.6.0")
     }
 }
 plugins {
-    id("org.springframework.boot") version "2.1.6.RELEASE"
+    id("org.springframework.boot") version "3.5.0"
     id("java")
     id("application")
     id("org.openjfx.javafxplugin") version "0.0.9"
-    id("org.jetbrains.kotlin.plugin.spring") version "1.3.61"
+    id("org.jetbrains.kotlin.plugin.spring") version "1.9.25"
 }
 
 configure<JavaFXOptions> {
@@ -59,8 +59,8 @@ group = "com.htmake"
 version = "2.5.4"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
 repositories {
@@ -76,52 +76,46 @@ val compileOnly by configurations.getting {
 }
 
 dependencies {
-    val kotlin_version: String by extra{"1.5.21"}
+    val kotlin_version: String by extra{"1.9.25"}
     // val kotlin_version: String by extra
     implementation("org.springframework.boot:spring-boot-starter")
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version")
+    // jakarta annotation for @PostConstruct
+    implementation("jakarta.annotation:jakarta.annotation-api:2.1.1")
     // vertx
-    implementation("io.vertx:vertx-core:3.8.1")
-    implementation("io.vertx:vertx-lang-kotlin:3.8.1")
-    implementation("io.vertx:vertx-lang-kotlin-coroutines:3.8.1")
-    implementation("io.vertx:vertx-web:3.8.1")
-    implementation("io.vertx:vertx-web-client:3.8.1")
+    implementation("io.vertx:vertx-core:4.5.11")
+    implementation("io.vertx:vertx-lang-kotlin:4.5.11")
+    implementation("io.vertx:vertx-lang-kotlin-coroutines:4.5.11")
+    implementation("io.vertx:vertx-web:4.5.11")
+    implementation("io.vertx:vertx-web-client:4.5.11")
 
     // json
-    implementation("com.google.code.gson:gson:2.8.5")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.+")
-
+    implementation("com.google.code.gson:gson:2.11.0")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     // log
     implementation("io.github.microutils:kotlin-logging:1.6.24")
     implementation("uk.org.lidalia:sysout-over-slf4j:1.0.2")
-
-    implementation("com.google.guava:guava:28.0-jre")
-
+    implementation("com.google.guava:guava:33.4.0-jre")
     // 网络
-    implementation("com.squareup.okhttp3:okhttp:4.9.1")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.1.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     // Retrofit
     implementation("com.squareup.retrofit2:retrofit:2.6.1")
     implementation("com.julienviet:retrofit-vertx:1.1.3")
-
     //JS rhino
     // implementation("com.github.gedoor:rhino-android:1.6")
     implementation(fileTree("src/lib").include("rhino-*.jar"))
-
     // 规则相关
-    implementation("org.jsoup:jsoup:1.14.1")
+    implementation("org.jsoup:jsoup:1.18.1")
     implementation("cn.wanghaomiao:JsoupXpath:2.5.0")
-    implementation("com.jayway.jsonpath:json-path:2.6.0")
-
+    implementation("com.jayway.jsonpath:json-path:2.9.0")
     // xml
     // 弃用 xmlpull-1.1.4.0，因为它需要 Java9
     // implementation("org.xmlpull:xmlpull:1.1.4.0")
     implementation(fileTree("src/lib").include("xmlpull-*.jar"))
-    // implementation("com.github.stefanhaustein:kxml2:2.5.0")
-
-    //加解密类库
-    implementation("cn.hutool:hutool-crypto:5.8.0.M1")
+    // 加解密类库
+    implementation("cn.hutool:hutool-crypto:5.8.35")
 
     // 转换繁体
     // implementation("com.github.liuyueyi.quick-chinese-transfer:quick-transfer-core:0.2.1")
@@ -138,12 +132,12 @@ dependencies {
 // }
 
 tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "1.8"
+    kotlinOptions.jvmTarget = "17"
 }
 
 application {
     // Define the main class for the application
-    mainClassName = "com.htmake.reader.ReaderUIApplicationKt"
+    mainClass.set("com.htmake.reader.ReaderUIApplicationKt")
 }
 
 tasks.create<io.github.fvarrui.javapackager.gradle.PackageTask>("buildReader"){

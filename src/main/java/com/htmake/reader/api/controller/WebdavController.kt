@@ -88,7 +88,7 @@ class WebdavController(coroutineContext: CoroutineContext, router: Router, onHan
                     res.putHeader("WWW-Authenticate", "Basic realm=\"Default realm\"")
                 }
             }
-            val rawMethod = it.request().rawMethod()
+            val rawMethod = it.request().method().name()
             if (!checkAuthorization(it)) {
                 if (
                     rawMethod.equals("PROPFIND") ||
