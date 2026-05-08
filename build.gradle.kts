@@ -144,6 +144,60 @@ application {
     mainClass.set("com.htmake.reader.ReaderUIApplicationKt")
 }
 
+tasks.register("buildServerJar") {
+    doLast {
+        exec {
+            commandLine("cmd", "/c", "gradlew.bat -b cli.gradle assemble")
+        }
+    }
+}
+
+tasks.register<Jar>("jarTray") {
+    dependsOn("classes")
+    archiveBaseName.set("reader-tray")
+    manifest { attributes["Main-Class"] = "com.htmake.reader.TrayApplication" }
+    from(sourceSets.main.get().output.classesDirs) {
+        include("com/htmake/reader/TrayApplication*.class")
+    }
+    from({
+        configurations.runtimeClasspath.get()
+            .filter { it.name.contains("kotlin-stdlib") }
+            .map { zipTree(it) }
+    }) { exclude("META-INF/**") }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.register<Copy>("packageDist") {
+    dependsOn("buildServerJar", "jarTray")
+    val distDir = layout.buildDirectory.dir("dist")
+    val jarVersion = project.version.toString()
+
+    from(layout.buildDirectory.dir("libs")) {
+        include("reader-$jarVersion.jar")
+        rename { "reader.jar" }
+    }
+    from(layout.buildDirectory.dir("libs")) {
+        include("reader-tray-$jarVersion.jar")
+        rename { "reader-tray.jar" }
+    }
+    into(distDir)
+
+    doLast {
+        val d = distDir.get().asFile
+        d.resolve("run-tray.bat").writeText(
+            """
+            |@echo off
+            |cd /d "%~dp0"
+            |start "" javaw -jar reader-tray.jar
+            """.trimMargin()
+        )
+        d.resolve("storage").mkdirs()
+        d.resolve("storage").resolve("data").mkdirs()
+        d.resolve("storage").resolve("data").resolve("default").mkdirs()
+        println("Package created at: ${d.absolutePath}")
+    }
+}
+
 tasks.create<io.github.fvarrui.javapackager.gradle.PackageTask>("buildReader"){
     dependsOn("build")
 	// mandatory

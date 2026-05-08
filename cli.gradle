@@ -19,6 +19,9 @@ apply plugin: 'kotlin'
 group = 'com.htmake'
 version = '2.5.4'
 sourceCompatibility = '17'
+springBoot {
+    mainClass = 'com.htmake.reader.ReaderApplicationKt'
+}
 
 repositories {
     mavenCentral()
@@ -78,6 +81,7 @@ dependencies {
     // implementation "com.github.liuyueyi.quick-chinese-transfer:quick-transfer-core:0.2.1"
 }
 compileKotlin {
+    exclude '**/ReaderUIApplication.kt'
     kotlinOptions {
         jvmTarget = "17"
     }
