@@ -105,6 +105,15 @@
         </el-popover>
         <div
           class="tool-icon"
+          @click="showCacheContent"
+        >
+          <div class="iconfont">
+            &#58917;
+          </div>
+          <div class="icon-text">缓存</div>
+        </div>
+        <div
+          class="tool-icon"
           @click="toShelf"
           :style="$store.state.miniInterface ? { order: -1 } : {}"
         >
