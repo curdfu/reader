@@ -56,7 +56,7 @@ apply(plugin = "kotlin")
 apply(plugin = "io.github.fvarrui.javapackager.plugin")
 
 group = "com.htmake"
-version = "2.5.4"
+version = "2.8.0"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -188,7 +188,7 @@ tasks.register<Copy>("packageDist") {
             """
             |@echo off
             |cd /d "%~dp0"
-            |start "" javaw -jar reader-tray.jar
+            |start "" javaw -jar reader-tray.jar %*
             """.trimMargin()
         )
         d.resolve("storage").mkdirs()

@@ -15,6 +15,7 @@ import java.io.File
 import java.nio.file.Paths
 import com.htmake.reader.config.AppConfig
 import com.google.gson.reflect.TypeToken
+import io.legado.app.utils.FileTypeAdapter
 import kotlin.reflect.KProperty1
 import kotlin.reflect.KMutableProperty
 import kotlin.reflect.full.memberProperties
@@ -28,8 +29,15 @@ import io.legado.app.utils.MD5Utils
  */
 val logger = KotlinLogging.logger {}
 
-val gson = GsonBuilder().disableHtmlEscaping().create()
-val prettyGson = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
+val gson = GsonBuilder()
+    .registerTypeAdapter(File::class.java, FileTypeAdapter())
+    .disableHtmlEscaping()
+    .create()
+val prettyGson = GsonBuilder()
+    .registerTypeAdapter(File::class.java, FileTypeAdapter())
+    .setPrettyPrinting()
+    .disableHtmlEscaping()
+    .create()
 
 var storageFinalPath = ""
 var workDirPath = ""

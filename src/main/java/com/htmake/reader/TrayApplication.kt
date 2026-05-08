@@ -18,7 +18,9 @@ object TrayApplication {
     @JvmStatic
     fun main(args: Array<String>) {
         args.forEach { arg ->
-            if (arg.startsWith("--port=")) port = arg.substringAfter("=").toIntOrNull() ?: 8080
+            if (arg.startsWith("--port=")) {
+                parsePort(arg.substringAfter("="))?.let { port = it }
+            }
         }
         if (!SystemTray.isSupported()) { exitProcess(1) }
         SwingUtilities.invokeLater { createAndShowTray() }
@@ -29,12 +31,14 @@ object TrayApplication {
         val statusItem = MenuItem(statusText()).apply { isEnabled = false }
         val startItem = MenuItem("Start Service").apply { addActionListener { startService() } }
         val stopItem = MenuItem("Stop Service").apply { addActionListener { stopService() } }
+        val openItem = MenuItem("Open Reader").apply { addActionListener { openReader() } }
         val exitItem = MenuItem("Exit").apply { addActionListener { exitApp() } }
 
         popup.add(statusItem)
         popup.addSeparator()
         popup.add(startItem)
         popup.add(stopItem)
+        popup.add(openItem)
         popup.addSeparator()
         popup.add(exitItem)
 
@@ -44,7 +48,7 @@ object TrayApplication {
             addMouseListener(object : MouseAdapter() {
                 override fun mouseClicked(e: MouseEvent) {
                     if (e.clickCount == 2) {
-                        try { Desktop.getDesktop().browse(java.net.URI("http://localhost:$port")) } catch (_: Exception) {}
+                        openReader()
                     }
                 }
             })
@@ -64,18 +68,67 @@ object TrayApplication {
         thread(isDaemon = true) { Thread.sleep(500); startService() }
     }
 
-    private fun statusText() = if (isRunning) "Status: Running ($port)" else "Status: Stopped"
+    private fun statusText() = if (isRunning) "Status: Running ($port)" else "Status: Stopped ($port)"
+
+    private fun parsePort(value: String): Int? {
+        val parsed = value.trim().toIntOrNull() ?: return null
+        return parsed.takeIf { it in 1..65535 }
+    }
+
+    private fun openReader() {
+        try {
+            Desktop.getDesktop().browse(java.net.URI("http://localhost:$port"))
+        } catch (e: Exception) {
+            trayIcon?.displayMessage("Reader", "Open failed: ${e.message}", TrayIcon.MessageType.ERROR)
+        }
+    }
+
 
     private fun createIcon(color: Color): Image {
-        val s = 24
+        val s = 64
         val img = BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB)
         val g = img.createGraphics()
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        g.color = color; g.fillOval(2, 2, s - 4, s - 4)
-        g.color = Color.WHITE; g.fillRect(7, 6, 10, 12)
-        g.color = color; g.fillRect(8, 7, 8, 10)
-        g.color = Color.WHITE; g.fillRect(9, 8, 6, 8)
-        g.dispose(); return img
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+        g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
+
+        val accent = color
+        val shadow = Color(0, 0, 0, 56)
+        val coverDark = Color(
+            (accent.red * 0.62).toInt().coerceIn(0, 255),
+            (accent.green * 0.62).toInt().coerceIn(0, 255),
+            (accent.blue * 0.62).toInt().coerceIn(0, 255)
+        )
+        val coverLight = Color(
+            (accent.red + 44).coerceAtMost(255),
+            (accent.green + 44).coerceAtMost(255),
+            (accent.blue + 44).coerceAtMost(255)
+        )
+
+        g.color = shadow
+        g.fillRoundRect(10, 12, 45, 43, 14, 14)
+
+        g.paint = GradientPaint(8f, 8f, coverLight, 54f, 56f, coverDark)
+        g.fillRoundRect(7, 6, 47, 48, 14, 14)
+
+        g.color = Color(255, 255, 255, 60)
+        g.drawRoundRect(8, 7, 45, 46, 13, 13)
+
+        g.color = Color.WHITE
+        g.fillRoundRect(19, 14, 27, 38, 6, 6)
+        g.color = Color(232, 238, 244)
+        g.drawLine(24, 21, 41, 21)
+        g.drawLine(24, 28, 41, 28)
+        g.drawLine(24, 35, 38, 35)
+        g.drawLine(24, 42, 36, 42)
+
+        g.color = accent
+        g.fillRoundRect(15, 15, 8, 36, 4, 4)
+        g.color = Color(255, 255, 255, 120)
+        g.drawLine(17, 18, 17, 47)
+
+        g.dispose()
+        return img
     }
 
     private fun startService() {

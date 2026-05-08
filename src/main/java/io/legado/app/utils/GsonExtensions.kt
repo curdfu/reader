@@ -4,6 +4,9 @@ import com.google.gson.*
 import com.google.gson.internal.LinkedTreeMap
 import com.google.gson.reflect.TypeToken
 import com.google.gson.stream.JsonWriter
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import java.io.File
 import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -19,10 +22,29 @@ val GSON: Gson by lazy {
             object : TypeToken<Map<String?, Any?>?>() {}.type,
             MapDeserializerDoubleAsIntFix()
         )
+        .registerTypeAdapter(File::class.java, FileTypeAdapter())
         .registerTypeAdapter(Int::class.java, IntJsonDeserializer())
         .disableHtmlEscaping()
         .setPrettyPrinting()
         .create()
+}
+
+class FileTypeAdapter : TypeAdapter<File>() {
+    override fun write(out: JsonWriter, value: File?) {
+        if (value == null) {
+            out.nullValue()
+        } else {
+            out.value(value.path)
+        }
+    }
+
+    override fun read(reader: JsonReader): File? {
+        if (reader.peek() == JsonToken.NULL) {
+            reader.nextNull()
+            return null
+        }
+        return File(reader.nextString())
+    }
 }
 
 inline fun <reified T> genericType(): Type = object : TypeToken<T>() {}.type
