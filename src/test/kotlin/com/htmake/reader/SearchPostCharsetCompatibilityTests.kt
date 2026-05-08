@@ -2,9 +2,9 @@ package com.htmake.reader
 
 import com.sun.net.httpserver.HttpServer
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 import java.net.InetSocketAddress
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets

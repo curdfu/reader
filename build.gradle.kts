@@ -108,7 +108,7 @@ dependencies {
     implementation(fileTree("src/lib").include("rhino-*.jar"))
     // 规则相关
     implementation("org.jsoup:jsoup:1.18.1")
-    implementation("cn.wanghaomiao:JsoupXpath:2.5.0")
+    implementation("cn.wanghaomiao:JsoupXpath:2.5.3")
     implementation("com.jayway.jsonpath:json-path:2.9.0")
     // xml
     // 弃用 xmlpull-1.1.4.0，因为它需要 Java9
@@ -133,6 +133,10 @@ dependencies {
 
 tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "17"
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }
 
 application {
