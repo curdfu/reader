@@ -7,6 +7,7 @@ import settings, {
 } from "./config";
 import { setCache, getCache } from "../plugins/cache";
 import { Message } from "element-ui";
+import Axios from "axios";
 
 const defaultNS = [{ username: "默认", userNS: "default" }];
 const builtInBookGroup = [
@@ -733,6 +734,72 @@ export default new Vuex.Store({
       } catch (error) {
         //
       }
+    },
+    syncCustomFontsFromServer({ commit, getters, state }) {
+      const axiosConfig = { withCredentials: true };
+      return Axios.get(getters.api + "/getCustomFonts", axiosConfig)
+        .then(res => {
+          if (res.data.isSuccess) {
+            const serverMap = res.data.data || {};
+            const localMap = state.config.customFontsMap || {};
+            const localHasFonts = Object.keys(localMap).length > 0;
+            const serverHasFonts = Object.keys(serverMap).length > 0;
+
+            if (serverHasFonts) {
+              // 后台有数据：合并，后台优先
+              const mergedMap = { ...localMap, ...serverMap };
+              // 移除后台已删除的 key
+              for (const key of customFonts) {
+                if (!(key in serverMap) && key in mergedMap) {
+                  delete mergedMap[key];
+                }
+              }
+              const config = { ...state.config, customFontsMap: mergedMap };
+              commit("setConfig", config);
+            } else if (localHasFonts) {
+              // 后台为空但本地有数据：迁移本地数据到后台
+              const validLocalMap = {};
+              for (const key of customFonts) {
+                if (key in localMap) {
+                  const url = localMap[key];
+                  if (
+                    typeof url === "string" &&
+                    url.startsWith("/assets/") &&
+                    url.includes("/fonts/") &&
+                    !url.includes("..") &&
+                    !url.includes("\\")
+                  ) {
+                    validLocalMap[key] = url;
+                  }
+                }
+              }
+              if (Object.keys(validLocalMap).length > 0) {
+                return Axios.post(
+                  getters.api + "/saveCustomFonts",
+                  { customFontsMap: validLocalMap },
+                  axiosConfig
+                )
+                  .then(saveRes => {
+                    if (saveRes.data.isSuccess && saveRes.data.data) {
+                      const config = {
+                        ...state.config,
+                        customFontsMap: saveRes.data.data
+                      };
+                      commit("setConfig", config);
+                    }
+                  })
+                  .catch(() => {
+                    // 迁移失败不影响页面使用
+                    console.warn("迁移本地字体映射到后台失败");
+                  });
+              }
+            }
+            // 两者都为空则无需操作
+          }
+        })
+        .catch(() => {
+          // 接口失败不阻断页面启动，继续使用本地 localStorage 中的 customFontsMap
+        });
     }
   }
 });

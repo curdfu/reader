@@ -321,6 +321,7 @@ export default {
 
     this.getUserInfo().then(() => {
       this.$store.dispatch("syncFromLocalStorage");
+      this.$store.dispatch("syncCustomFontsFromServer");
       this.init();
     });
     this.loadTxtTocRules();
@@ -438,6 +439,8 @@ export default {
           window.loadLink(this.$store.getters.customCSSUrl, () => {
             window.customCSSLoad = true;
           });
+        // 同步自定义字体映射
+        this.$store.dispatch("syncCustomFontsFromServer");
       }
     },
     "$store.state.config.pageType": function() {
@@ -536,6 +539,7 @@ export default {
         }
         this.getUserInfo().then(() => {
           this.$store.dispatch("syncFromLocalStorage");
+          this.$store.dispatch("syncCustomFontsFromServer");
           this.init(true);
         });
       }

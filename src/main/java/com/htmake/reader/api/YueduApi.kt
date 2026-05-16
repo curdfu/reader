@@ -282,6 +282,12 @@ class YueduApi : RestVerticle() {
         // 用户恢复本地配置
         router.get("/reader3/getUserConfig").coroutineHandler { userController.getUserConfig(it) }
 
+        // 获取自定义字体映射
+        router.get("/reader3/getCustomFonts").coroutineHandler { userController.getCustomFonts(it) }
+
+        // 保存自定义字体映射
+        router.post("/reader3/saveCustomFonts").coroutineHandler { userController.saveCustomFonts(it) }
+
         // 获取用户列表
         router.get("/reader3/getUserList").coroutineHandler { userController.getUserList(it) }
 

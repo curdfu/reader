@@ -730,6 +730,20 @@ export default {
                 delete config.customFontsMap[customFontName];
                 this.config = config;
                 removeFont(customFontName);
+                // 同步删除后的字体映射到后台
+                Axios.post(this.api + "/saveCustomFonts", {
+                  customFontsMap: { ...this.config.customFontsMap }
+                })
+                  .then(saveRes => {
+                    if (saveRes.data.isSuccess && saveRes.data.data) {
+                      let syncConfig = { ...this.config };
+                      syncConfig.customFontsMap = saveRes.data.data;
+                      this.config = syncConfig;
+                    }
+                  })
+                  .catch(() => {
+                    this.$message.warning("字体文件已删除，但同步配置失败");
+                  });
               }
             },
             error => {
@@ -767,6 +781,21 @@ export default {
             config.customFontsMap = config.customFontsMap || {};
             config.customFontsMap[this.customFontName] = res.data.data[0];
             this.config = config;
+            // 同步字体映射到后台
+            Axios.post(this.api + "/saveCustomFonts", {
+              customFontsMap: { ...this.config.customFontsMap }
+            })
+              .then(saveRes => {
+                if (saveRes.data.isSuccess && saveRes.data.data) {
+                  // 用后台返回的 map 回写本地，确保前后端一致
+                  let syncConfig = { ...this.config };
+                  syncConfig.customFontsMap = saveRes.data.data;
+                  this.config = syncConfig;
+                }
+              })
+              .catch(() => {
+                this.$message.warning("字体已上传，但同步到后台失败");
+              });
           }
         },
         error => {

@@ -523,7 +523,7 @@ class UserController(coroutineContext: CoroutineContext): BaseController(corouti
         return returnData.setData(fileList.getList())
     }
 
-    suspend fun deleteFile(context: RoutingContext): ReturnData {
+suspend fun deleteFile(context: RoutingContext): ReturnData {
         val returnData = ReturnData()
         if (!checkAuth(context)) {
             return returnData.setData("NEED_LOGIN").setErrorMsg("请登录后使用")
@@ -547,6 +547,68 @@ class UserController(coroutineContext: CoroutineContext): BaseController(corouti
         logger.info("delete file: {}", file)
         file.deleteRecursively()
         return returnData.setData("")
+    }
+
+    suspend fun getCustomFonts(context: RoutingContext): ReturnData {
+        val returnData = ReturnData()
+        if (!checkAuth(context)) {
+            return returnData.setData("NEED_LOGIN").setErrorMsg("请登录后使用")
+        }
+        val userNameSpace = getUserNameSpace(context)
+        val customFontsJson = asJsonObject(getUserStorage(userNameSpace, "customFonts"))
+        if (customFontsJson == null) {
+            return returnData.setData(mapOf<String, String>())
+        }
+        // 过滤掉非字体映射字段（如 @updateTime），只返回合法的字体 key
+        val allowedKeys = setOf("custom-system", "custom-ht", "custom-kt", "custom-st", "custom-fs")
+        val filteredMap = mutableMapOf<String, String>()
+        for (entry in customFontsJson) {
+            if (entry.key in allowedKeys) {
+                filteredMap[entry.key] = entry.value.toString()
+            }
+        }
+        return returnData.setData(filteredMap)
+    }
+
+    suspend fun saveCustomFonts(context: RoutingContext): ReturnData {
+        val returnData = ReturnData()
+        if (!checkAuth(context)) {
+            return returnData.setData("NEED_LOGIN").setErrorMsg("请登录后使用")
+        }
+        val body = context.bodyAsJson
+        if (body == null) {
+            return returnData.setErrorMsg("参数错误")
+        }
+        val userNameSpace = getUserNameSpace(context)
+        val customFontsMap = body.getJsonObject("customFontsMap") ?: JsonObject()
+
+        val allowedKeys = setOf("custom-system", "custom-ht", "custom-kt", "custom-st", "custom-fs")
+        val allowedPrefix = "/assets/$userNameSpace/fonts/"
+        val filteredMap = mutableMapOf<String, String>()
+
+        for (entry in customFontsMap) {
+            val key = entry.key
+            val value = entry.value.toString()
+            if (key in allowedKeys
+                && value.startsWith(allowedPrefix)
+                && !value.contains("..")
+                && !value.contains("\\")) {
+                // 检查文件是否存在，避免残留坏链接
+                val file = File(getWorkDir("storage" + value))
+                if (file.exists()) {
+                    filteredMap[key] = value
+                }
+            }
+        }
+
+        val storageContent = JsonObject()
+        for ((k, v) in filteredMap) {
+            storageContent.put(k, v)
+        }
+        storageContent.put("@updateTime", System.currentTimeMillis())
+        saveUserStorage(userNameSpace, "customFonts", storageContent)
+
+        return returnData.setData(filteredMap)
     }
 }
 
