@@ -145,6 +145,17 @@
       <div class="float-btn-zone">
         <div class="float-left-btn-zone">
           <div
+            class="float-btn content-source-btn"
+            :class="contentSourceMeta.className"
+            :style="popupAbsoluteBtnStyle"
+            v-if="show && contentSource && !$store.state.miniInterface"
+            :title="contentSourceLabel"
+            :aria-label="contentSourceLabel"
+          >
+            <i :class="contentSourceMeta.icon"></i>
+            <span class="source-badge">{{ contentSourceMeta.badge }}</span>
+          </div>
+          <div
             class="float-btn"
             :style="popupAbsoluteBtnStyle"
             @click="showBookmarkDialog"
@@ -457,13 +468,6 @@
           @click="toNextChapter()"
           >加载下一章</span
         >
-        <span
-          class="content-source-tag"
-          v-if="show && contentSource && !$store.state.miniInterface"
-          :title="contentSourceLabel"
-        >
-          {{ contentSourceShortLabel }}
-        </span>
       </div>
     </div>
   </div>
@@ -1070,21 +1074,45 @@ export default {
     chineseFont() {
       return this.config.chineseFont;
     },
-    contentSourceLabel() {
-      const labels = {
-        localCache: "阅读端本地缓存",
-        serverCache: "服务器缓存",
-        source: "书源实时获取"
+    contentSourceMeta() {
+      const sourceMap = {
+        localCache: {
+          label: "阅读端本地缓存",
+          shortLabel: "本地",
+          badge: "本",
+          icon: "el-icon-folder-checked",
+          className: "local-cache"
+        },
+        serverCache: {
+          label: "服务器缓存",
+          shortLabel: "服务器",
+          badge: "服",
+          icon: "el-icon-coin",
+          className: "server-cache"
+        },
+        source: {
+          label: "书源实时获取",
+          shortLabel: "书源",
+          badge: "源",
+          icon: "el-icon-connection",
+          className: "live-source"
+        }
       };
-      return labels[this.contentSource] || "";
+      return (
+        sourceMap[this.contentSource] || {
+          label: "",
+          shortLabel: "",
+          badge: "",
+          icon: "el-icon-question",
+          className: ""
+        }
+      );
+    },
+    contentSourceLabel() {
+      return this.contentSourceMeta.label;
     },
     contentSourceShortLabel() {
-      const labels = {
-        localCache: "本地",
-        serverCache: "服务器",
-        source: "书源"
-      };
-      return labels[this.contentSource] || "";
+      return this.contentSourceMeta.shortLabel;
     }
   },
   methods: {
@@ -3249,6 +3277,52 @@ export default {
 
         .el-icon-top, .el-icon-bottom, .el-icon-info, .el-icon-search, .el-icon-collection-tag {
           line-height: 36px;
+        }
+
+        &.content-source-btn {
+          position: relative;
+          cursor: default;
+          font-size: 18px;
+
+          i {
+            line-height: 36px;
+          }
+
+          .source-badge {
+            position: absolute;
+            right: -4px;
+            bottom: -3px;
+            min-width: 16px;
+            height: 16px;
+            padding: 0 2px;
+            border-radius: 8px;
+            box-sizing: border-box;
+            color: #fff;
+            font-size: 10px;
+            line-height: 16px;
+            font-weight: 600;
+          }
+
+          &.local-cache {
+            color: #2f7d57;
+            .source-badge {
+              background: #2f7d57;
+            }
+          }
+
+          &.server-cache {
+            color: #2f6f9f;
+            .source-badge {
+              background: #2f6f9f;
+            }
+          }
+
+          &.live-source {
+            color: #9a6a24;
+            .source-badge {
+              background: #9a6a24;
+            }
+          }
         }
       }
     }
