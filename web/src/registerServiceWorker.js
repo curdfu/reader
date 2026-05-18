@@ -49,16 +49,6 @@ export function registerServiceWorker() {
       process.env.NODE_ENV === "production" &&
       !window.getQueryString("nopwa")
     ) {
-      if ("serviceWorker" in navigator) {
-        let refreshing = false;
-        navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (refreshing) {
-            return;
-          }
-          refreshing = true;
-          window.location.reload(true);
-        });
-      }
       register(`${process.env.BASE_URL}service-worker.js`, {
         ready() {
           // console.log(
